@@ -1,0 +1,124 @@
+// // -----------------------------------------------------------------------------
+// // File: prisma/schema.prisma
+// // Chức năng: Thiết kế cấu trúc Database (Bảng, Cột, Khóa ngoại)
+// // -----------------------------------------------------------------------------
+
+// generator client {
+//   provider = "prisma-client-js"
+// }
+
+// datasource db {
+//   provider = "postgresql"
+//   url      = env("DATABASE_URL")
+// }
+
+// // ==========================================
+// // 1. QUẢN LÝ TÀI KHOẢN & LOG (USERS & AUDIT)
+// // ==========================================
+
+// enum Role {
+//   SUPER_ADMIN
+//   EDITOR
+//   SALES
+// }
+
+// model User {
+//   id         String    @id @default(uuid())
+//   email      String    @unique
+//   password   String    // Mật khẩu sẽ được mã hóa bcrypt
+//   full_name  String
+//   role       Role      @default(EDITOR)
+  
+//   // Chuẩn hóa Timestamps (Quy tắc bắt buộc từ Checklist)
+//   created_at DateTime  @default(now())
+//   updated_at DateTime  @updatedAt
+//   deleted_at DateTime? // Lưu ngày xóa (Nếu có giá trị -> là đã bị xóa mềm)
+
+//   // Quan hệ 1-N: 1 User có thể có nhiều log do họ tạo ra
+//   audit_logs AuditLog[]
+
+//   // Quy tắc chuẩn Naming: Map bảng này thành tên viết thường trong DB
+//   @@map("users")
+// }
+
+// model AuditLog {
+//   id            String   @id @default(uuid())
+//   user_id       String
+//   action        String   // VD: CREATE_ARTICLE, UPDATE_LEAD
+//   module        String   // VD: NEWS, SERVICES, LEADS
+//   record_id     String?  // ID của dữ liệu bị tác động
+//   old_data      Json?    // Dữ liệu trước khi sửa (Lưu dạng JSON)
+//   new_data      Json?    // Dữ liệu sau khi sửa
+//   created_at    DateTime @default(now())
+
+//   // Khóa ngoại liên kết tới bảng User
+//   user          User     @relation(fields: [user_id], references: [id])
+
+//   @@map("audit_logs")
+// }
+
+// // ==========================================
+// // 2. QUẢN LÝ DANH MỤC ĐA NGÔN NGỮ (CATEGORIES)
+// // ==========================================
+
+// enum CategoryType {
+//   NEWS       // Danh mục tin tức
+//   SERVICE    // Danh mục dịch vụ
+//   STANDARD   // Danh mục tiêu chuẩn
+// }
+
+// model Category {
+//   id         Int          @id @default(autoincrement())
+//   slug       String       @unique // Slug chung cho mapping URL
+//   type       CategoryType
+  
+//   // DỮ LIỆU ĐA NGÔN NGỮ JSONB (vi, en, zh) - Theo Checklist
+//   name_i18n  Json         // Chứa tên danh mục: { "vi": "Môi trường", "en": "Environment" }
+//   desc_i18n  Json?        // Mô tả danh mục
+//   seo_i18n   Json?        // Dữ liệu SEO: title, description, keywords
+  
+//   // Trạng thái & Sắp xếp
+//   is_active  Boolean      @default(true)
+//   order      Int          @default(0)
+
+//   created_at DateTime     @default(now())
+//   updated_at DateTime     @updatedAt
+//   deleted_at DateTime?
+
+//   @@map("categories")
+// }
+
+// // ==========================================
+// // 3. QUẢN LÝ FORM LIÊN HỆ & KHÁCH HÀNG (LEADS)
+// // ==========================================
+
+// enum LeadStatus {
+//   NEW         // Mới gửi
+//   CONTACTED   // Đã liên hệ
+//   QUALIFIED   // Khách hàng tiềm năng
+//   CLOSED      // Đóng/Hoàn thành
+// }
+
+// model Lead {
+//   id            String     @id @default(uuid())
+//   full_name     String
+//   email         String
+//   phone         String?
+//   company_name  String?
+//   content       String     @db.Text
+  
+//   status        LeadStatus @default(NEW)
+//   consent_email Boolean    @default(false) // Tích chọn đồng ý nhận email
+  
+//   // Tracking & UTM (Yêu cầu từ Checklist)
+//   utm_source    String?
+//   utm_medium    String?
+//   utm_campaign  String?
+//   referrer      String?
+//   lead_score    Int        @default(0)
+
+//   created_at    DateTime   @default(now())
+//   updated_at    DateTime   @updatedAt
+
+//   @@map("leads")
+// }

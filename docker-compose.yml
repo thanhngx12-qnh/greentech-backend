@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     ports:
-      - '5439:5439' # <-- Sửa chỗ này: Map port 5433 trên máy Mac vào 5432 trong container
+      - '5439:5432' # <-- Sửa chỗ này: Map port 5433 trên máy Mac vào 5432 trong container
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped

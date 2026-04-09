@@ -1,13 +1,123 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// -----------------------------------------------------------------------------
+// File: prisma/schema.prisma
+// Chức năng: Thiết kế cấu trúc Database (Bảng, Cột, Khóa ngoại)
+// -----------------------------------------------------------------------------
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. QUẢN LÝ TÀI KHOẢN & LOG (USERS & AUDIT)
+// ==========================================
+
+enum Role {
+  SUPER_ADMIN
+  EDITOR
+  SALES
+}
+
+model User {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  password   String    // Mật khẩu sẽ được mã hóa bcrypt
+  full_name  String
+  role       Role      @default(EDITOR)
+  
+  // Chuẩn hóa Timestamps
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime? // Soft Delete
+
+  // Quan hệ 1-N: 1 User có thể có nhiều log
+  audit_logs AuditLog[]
+
+  @@map("users")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  user_id       String
+  action        String   
+  module        String   
+  record_id     String?  
+  old_data      Json?    
+  new_data      Json?    
+  created_at    DateTime @default(now())
+
+  // Khóa ngoại liên kết tới bảng User
+  user          User     @relation(fields: [user_id], references: [id])
+
+  @@map("audit_logs")
+}
+
+// ==========================================
+// 2. QUẢN LÝ DANH MỤC ĐA NGÔN NGỮ (CATEGORIES)
+// ==========================================
+
+enum CategoryType {
+  NEWS       
+  SERVICE    
+  STANDARD   
+}
+
+model Category {
+  id         Int          @id @default(autoincrement())
+  slug       String       @unique 
+  type       CategoryType
+  
+  // DỮ LIỆU ĐA NGÔN NGỮ JSONB (vi, en, zh)
+  name_i18n  Json         
+  desc_i18n  Json?        
+  seo_i18n   Json?        
+  
+  // Trạng thái & Sắp xếp
+  is_active  Boolean      @default(true)
+  order      Int          @default(0)
+
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+  deleted_at DateTime?
+
+  @@map("categories")
+}
+
+// ==========================================
+// 3. QUẢN LÝ FORM LIÊN HỆ & KHÁCH HÀNG (LEADS)
+// ==========================================
+
+enum LeadStatus {
+  NEW         
+  CONTACTED   
+  QUALIFIED   
+  CLOSED      
+}
+
+model Lead {
+  id            String     @id @default(uuid())
+  full_name     String
+  email         String
+  phone         String?
+  company_name  String?
+  content       String     @db.Text
+  
+  status        LeadStatus @default(NEW)
+  consent_email Boolean    @default(false) 
+  
+  // Tracking & UTM
+  utm_source    String?
+  utm_medium    String?
+  utm_campaign  String?
+  referrer      String?
+  lead_score    Int        @default(0)
+
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  @@map("leads")
 }
