@@ -3,13 +3,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class CategoriesService {
   constructor(private prisma: PrismaService) {}
 
-  // Tạo mới danh mục
   async create(dto: CreateCategoryDto) {
     return this.prisma.category.create({
       data: {
@@ -20,8 +20,7 @@ export class CategoriesService {
     });
   }
 
-  // Lấy danh sách (có phân trang, lọc, sắp xếp theo Checklist)
-  async findAll(query: any) {
+  async findAll(query: GetCategoriesQueryDto) {
     const {
       page = 1,
       limit = 10,
@@ -30,56 +29,75 @@ export class CategoriesService {
       type,
       status,
       search,
+      lang = 'vi',
     } = query;
     const skip = (page - 1) * limit;
 
-    // 1. Xây dựng điều kiện lọc cơ bản cho Database
+    // 1. Xây dựng điều kiện lọc cơ bản
     const where: Prisma.CategoryWhereInput = {};
     if (type) where.type = type;
     if (status !== undefined) where.is_active = status === 'true';
 
-    // 2. Truy vấn lấy dữ liệu từ DB
-    // Lưu ý: Chúng ta lấy tất cả các bản ghi thỏa mãn điều kiện type/status (không dùng search ở đây để tránh lỗi JSONB)
-    let data = await this.prisma.category.findMany({
-      where,
-      skip,
-      take: Number(limit),
-      orderBy: { [sortBy]: order.toLowerCase() as 'asc' | 'desc' },
-    });
-
-    let total = await this.prisma.category.count({ where });
-
-    // 3. Xử lý Search bằng JavaScript (Đảm bảo chính xác cho JSONB)
+    // 2. Xử lý Search bằng JSONB Path (Đã sửa lỗi cú pháp path: ['zh'])
     if (search) {
-      const searchTerm = search.toLowerCase();
-
-      // Bước A: Lấy lại TẤT CẢ dữ liệu thỏa mãn type/status (không phân trang) để có thể filter chính xác
-      // Nếu chúng ta chỉ filter trên cái 'data' đã phân trang (10 cái), thì nếu từ khóa nằm ở cái thứ 11, nó sẽ không bao giờ tìm thấy.
-      const allData = await this.prisma.category.findMany({
-        where,
-      });
-
-      // Bước B: Thực hiện lọc trên mảng đầy đủ
-      const filteredData = allData.filter((cat: any) => {
-        const nameVi = cat.name_i18n?.vi?.toLowerCase() || '';
-        const descVi = cat.desc_i18n?.vi?.toLowerCase() || '';
-        return nameVi.includes(searchTerm) || descVi.includes(searchTerm);
-      });
-
-      // Bước C: Tính toán lại Phân trang trên mảng đã được lọc
-      total = filteredData.length; // Tổng số lượng thực tế sau khi search
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + Number(limit);
-
-      data = filteredData.slice(startIndex, endIndex); // Cắt mảng theo phân trang
+      where.OR = [
+        {
+          name_i18n: {
+            path: ['vi'],
+            string_contains: search,
+            mode: 'insensitive',
+          } as any,
+        },
+        {
+          name_i18n: {
+            path: ['en'],
+            string_contains: search,
+            mode: 'insensitive',
+          } as any,
+        },
+        {
+          name_i18n: {
+            path: ['zh'],
+            string_contains: search,
+            mode: 'insensitive',
+          } as any,
+        },
+      ];
     }
 
+    // 3. Truy vấn dữ liệu
+    const [data, total] = await Promise.all([
+      this.prisma.category.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: order.toLowerCase() as 'asc' | 'desc' },
+      }),
+      this.prisma.category.count({ where }),
+    ]);
+
+    // 4. Mapping dữ liệu trả về theo ngôn ngữ yêu cầu
+    const currentLang = lang as string;
+
+    const mappedData = data.map((item) => {
+      const nameObj = item.name_i18n as any;
+      const descObj = item.desc_i18n as any;
+      const seoObj = item.seo_i18n as any;
+
+      return {
+        ...item,
+        name: nameObj[currentLang] || nameObj['vi'],
+        description: descObj?.[currentLang] || descObj?.['vi'],
+        seo: seoObj?.[currentLang] || seoObj?.['vi'],
+      };
+    });
+
     return {
-      data,
+      data: mappedData,
       meta: {
         total,
-        page: Number(page),
-        limit: Number(limit),
+        page,
+        limit,
         totalPages: Math.ceil(total / limit),
       },
     };
@@ -92,7 +110,6 @@ export class CategoriesService {
   }
 
   async update(id: number, dto: UpdateCategoryDto) {
-    await this.findOne(id);
     return this.prisma.category.update({
       where: { id },
       data: dto,
@@ -103,7 +120,7 @@ export class CategoriesService {
     await this.findOne(id);
     return this.prisma.category.update({
       where: { id },
-      data: { deleted_at: new Date() }, // Soft Delete theo Checklist
+      data: { deleted_at: new Date() },
     });
   }
 }

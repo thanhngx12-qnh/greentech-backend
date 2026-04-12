@@ -13,13 +13,14 @@ import {
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { GetCategoriesQueryDto } from './dto/get-categories-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 
-@Controller('admin/categories') // Prefix theo chuẩn Admin API
-@UseGuards(JwtAuthGuard, RolesGuard) // Bắt buộc phải Login và có Role mới vào được
+@Controller('admin/categories')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
@@ -31,7 +32,8 @@ export class CategoriesController {
 
   @Get()
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
-  findAll(@Query() query: any) {
+  findAll(@Query() query: GetCategoriesQueryDto) {
+    // Dùng DTO thay vì any
     return this.categoriesService.findAll(query);
   }
 
@@ -42,7 +44,7 @@ export class CategoriesController {
   }
 
   @Put(':id')
-  @Roles(Role.SUPER_ADMIN) // Chỉ Super Admin mới được sửa
+  @Roles(Role.SUPER_ADMIN)
   update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
     return this.categoriesService.update(+id, dto);
   }

@@ -36,6 +36,7 @@ model User {
 
   // Quan hệ 1-N: 1 User có thể có nhiều log
   audit_logs AuditLog[]
+  news     News[]
 
   @@map("users")
 }
@@ -84,6 +85,9 @@ model Category {
   updated_at DateTime     @updatedAt
   deleted_at DateTime?
 
+  news     News[]     
+  services Service[]
+
   @@map("categories")
 }
 
@@ -120,4 +124,84 @@ model Lead {
   updated_at    DateTime   @updatedAt
 
   @@map("leads")
+}
+
+
+// ==========================================
+// 4. QUẢN LÝ NỘI DUNG (NEWS & SERVICES)
+// ==========================================
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+  SCHEDULED
+}
+
+enum ServiceStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
+
+model News {
+  id            String      @id @default(uuid())
+  category_id   Int
+  author_id     String?     // Người viết bài (liên kết tới User)
+  
+  // Nội dung đa ngôn ngữ
+  slug_i18n     Json        // {"vi": "slug-vi", "en": "slug-en", "zh": "slug-zh"}
+  title_i18n    Json        // {"vi": "Tiêu đề", "en": "Title", "zh": "标题"}
+  content_i18n  Json        // {"vi": "Nội dung...", "en": "Content...", "zh": "内容..."}
+  
+  // Hình ảnh
+  featured_image String?    // URL ảnh đại diện từ MinIO
+
+  // SEO SUITE (Cực mạnh - Đa ngôn ngữ)
+  // Cấu trúc: {"vi": {"meta_title": "...", "og_image": "...", "seo_keywords": "..."}, "en": {...}}
+  seo_i18n      Json?       
+
+  // Trạng thái & Quản lý
+  status        NewsStatus  @default(DRAFT)
+  published_at  DateTime?
+  
+  // Timestamps
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+  deleted_at    DateTime?
+
+  // Quan hệ
+  category      Category    @relation(fields: [category_id], references: [id])
+  author        User?       @relation(fields: [author_id], references: [id])
+
+  @@map("news")
+}
+
+model Service {
+  id            String      @id @default(uuid())
+  category_id   Int
+  
+  // Nội dung đa ngôn ngữ
+  slug_i18n     Json
+  name_i18n     Json
+  desc_i18n     Json        // Mô tả ngắn/dài
+
+  // Hình ảnh
+  featured_image String?
+
+  // SEO SUITE
+  seo_i18n      Json?
+
+  // Trạng thái & Quản lý
+  status        ServiceStatus @default(DRAFT)
+  
+  // Timestamps
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+  deleted_at    DateTime?
+
+  // Quan hệ
+  category      Category    @relation(fields: [category_id], references: [id])
+
+  @@map("services")
 }

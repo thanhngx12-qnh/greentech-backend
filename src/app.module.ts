@@ -7,7 +7,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CategoriesModule } from './modules/categories/categories.module';
-import { MediaModule } from './modules/media/media.module'; // <-- 1. PHẢI CÓ DÒNG NÀY
+import { MediaModule } from './modules/media/media.module';
+import { NewsModule } from './modules/news/news.module';
 
 @Module({
   imports: [
@@ -15,7 +16,8 @@ import { MediaModule } from './modules/media/media.module'; // <-- 1. PHẢI CÓ
     UsersModule,
     AuthModule,
     CategoriesModule,
-    MediaModule, // <-- 2. PHẢI CÓ DÒNG NÀY
+    MediaModule,
+    NewsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
