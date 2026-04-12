@@ -13,6 +13,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
@@ -22,20 +23,28 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = exception.getStatus();
       const res: any = exception.getResponse();
       message = res.message || exception.message;
+      // Nếu lỗi có kèm errorCode (do mình chủ động ném ra), lấy nó, nếu không dùng mặc định
       errorCode = res.errorCode || 'HTTP_EXCEPTION';
     } else if (exception instanceof Error) {
-      // Catch các lỗi lạ không phải HttpException
       message = (exception as Error).message;
-      // Ở đây có thể thêm logic để map các lỗi Prisma cụ thể sang errorCode
+      // Xử lý riêng cho các lỗi Prisma để không lộ thông tin DB
       if ((exception as any).code === 'P2025') {
+        status = HttpStatus.NOT_FOUND;
+        message = 'Không tìm thấy dữ liệu tương ứng';
         errorCode = 'RECORD_NOT_FOUND';
+      } else if ((exception as any).code === 'P2002') {
+        status = HttpStatus.CONFLICT;
+        message = 'Dữ liệu đã tồn tại (Trùng lặp)';
+        errorCode = 'DUPLICATE_DATA';
       }
     }
 
     response.status(status).json({
+      success: false,
       statusCode: status,
       errorCode: errorCode,
       message: message,
+      path: request.url,
       timestamp: new Date().toISOString(),
     });
   }

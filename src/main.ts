@@ -1,24 +1,25 @@
 // File: src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common'; // <-- Thêm dòng này
-import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { ValidationPipe } from '@nestjs/common';
+import { AllExceptionsFilter } from './common/filters/http-exception.filter'; // <-- THÊM
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Bật ValidationPipe để NestJS tự động kiểm tra DTO
+  // 1. Bật Validation Global
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // Tự động loại bỏ các trường không khai báo trong DTO
-      forbidNonWhitelisted: true, // Báo lỗi nếu client gửi dư trường
-      transform: true, // Tự động convert kiểu dữ liệu (VD: string -> number)
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
+  // 2. Bật Global Exception Filter để chuẩn hóa lỗi (Cực kỳ quan trọng)
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  await app.listen(process.env.PORT || 3000);
-  console.log(`Application is running on: ${await app.getUrl()}`);
+  await app.listen(3000);
+  console.log(`Application is running on: http://localhost:3000`);
 }
 bootstrap();

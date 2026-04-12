@@ -147,30 +147,32 @@ enum ServiceStatus {
 model News {
   id            String      @id @default(uuid())
   category_id   Int
-  author_id     String?     // Người viết bài (liên kết tới User)
+  author_id     String?     // Liên kết tới User (Người viết bài)
   
-  // Nội dung đa ngôn ngữ
-  slug_i18n     Json        // {"vi": "slug-vi", "en": "slug-en", "zh": "slug-zh"}
-  title_i18n    Json        // {"vi": "Tiêu đề", "en": "Title", "zh": "标题"}
-  content_i18n  Json        // {"vi": "Nội dung...", "en": "Content...", "zh": "内容..."}
-  
-  // Hình ảnh
-  featured_image String?    // URL ảnh đại diện từ MinIO
+  // 1. Nội dung đa ngôn ngữ (JSONB)
+  // Chúng ta dùng format: { "vi": "...", "en": "...", "zh": "..." }
+  slug_i18n     Json        // URL thân thiện: {"vi": "tin-moi", "en": "new-news", "zh": "..."}
+  title_i18n    Json        // Tiêu đề: {"vi": "Tiêu đề", "en": "Title", "zh": "..."}
+  content_i18n  Json        // Nội dung: {"vi": "Nội dung...", "en": "Content...", "zh": "..."}
 
-  // SEO SUITE (Cực mạnh - Đa ngôn ngữ)
-  // Cấu trúc: {"vi": {"meta_title": "...", "og_image": "...", "seo_keywords": "..."}, "en": {...}}
+  // 2. Hình ảnh & Media
+  featured_image String?    // URL ảnh đại diện chính (từ MinIO)
+
+  // 3. SEO SUITE (Siêu chi tiết - JSONB)
+  // Mỗi ngôn ngữ sẽ có một object SEO riêng biệt
+  // Cấu trúc: {"vi": {"meta_title": "...", "meta_description": "...", "keywords": "...", "og_image": "..."}, "en": {...}}
   seo_i18n      Json?       
 
-  // Trạng thái & Quản lý
+  // 4. Trạng thái & Lập lịch
   status        NewsStatus  @default(DRAFT)
-  published_at  DateTime?
-  
-  // Timestamps
+  published_at  DateTime?   // Thời điểm bài viết được phép hiển thị
+
+  // 5. Timestamps
   created_at    DateTime    @default(now())
   updated_at    DateTime    @updatedAt
-  deleted_at    DateTime?
+  deleted_at    DateTime?   // Soft delete
 
-  // Quan hệ
+  // QUAN HỆ (RELATIONS)
   category      Category    @relation(fields: [category_id], references: [id])
   author        User?       @relation(fields: [author_id], references: [id])
 
