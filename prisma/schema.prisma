@@ -37,6 +37,7 @@ model User {
   // Quan hệ 1-N: 1 User có thể có nhiều log
   audit_logs AuditLog[]
   news     News[]
+  services Service[]
 
   @@map("users")
 }
@@ -138,12 +139,6 @@ enum NewsStatus {
   SCHEDULED
 }
 
-enum ServiceStatus {
-  DRAFT
-  PUBLISHED
-  UNPUBLISHED
-}
-
 model News {
   id            String      @id @default(uuid())
   category_id   Int
@@ -178,32 +173,47 @@ model News {
 
   @@map("news")
 }
+// -----------------------------------------------------------------------------
+// Bổ sung/Cập nhật Model Service (Chuẩn bị cho cả TinyMCE và SEO)
+// -----------------------------------------------------------------------------
 
 model Service {
   id            String      @id @default(uuid())
   category_id   Int
-  
-  // Nội dung đa ngôn ngữ
-  slug_i18n     Json
-  name_i18n     Json
-  desc_i18n     Json        // Mô tả ngắn/dài
+  author_id     String?     // Người quản lý dịch vụ
 
-  // Hình ảnh
+  // 1. NỘI DUNG ĐA NGÔN NGỮ (Core Content)
+  slug_i18n     Json        // {"vi": "phân-tích-nước", "en": "water-analysis", ...}
+  title_i18n    Json        // {"vi": "Phân tích nước", "en": "Water Analysis", ...}
+  content_i18n  Json        // {"vi": "Nội dung chi tiết...", "en": "...", "zh": "..."}
+
+  // 2. DỮ LIỆU THƯƠNG MẠI (Commercial Data) - Quan trọng cho B2B
+  price         Decimal?    @db.Decimal(18, 2) // Dùng Decimal thay vì Float để tránh lỗi làm tròn tiền
+  currency      String?     @default("VND")   // Đơn vị tiền tệ (VND, USD, EUR...)
+  duration      String?     // Thời gian hoàn thành (vd: "3-5 working days", "24 hours")
+
+  // 3. HÌNH ẢNH & SEO
   featured_image String?
+  seo_i18n      Json?       // {"vi": {"meta_title": "...", "og_image": "..."}, "en": {...}}
 
-  // SEO SUITE
-  seo_i18n      Json?
-
-  // Trạng thái & Quản lý
+  // 4. TRẠNG THÁI & QUẢN LÝ
   status        ServiceStatus @default(DRAFT)
+  is_active     Boolean       @default(true)
   
-  // Timestamps
-  created_at    DateTime    @default(now())
-  updated_at    DateTime    @updatedAt
+  // 5. TIMESTAMPS
+  created_at    DateTime      @default(now())
+  updated_at    DateTime      @updatedAt
   deleted_at    DateTime?
 
-  // Quan hệ
-  category      Category    @relation(fields: [category_id], references: [id])
+  // QUAN HỆ
+  category      Category      @relation(fields: [category_id], references: [id])
+  author        User?         @relation(fields: [author_id], references: [id])
 
   @@map("services")
+}
+
+enum ServiceStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
 }

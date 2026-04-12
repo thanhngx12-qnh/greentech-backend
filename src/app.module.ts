@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { MediaModule } from './modules/media/media.module';
 import { NewsModule } from './modules/news/news.module';
+import { ServicesModule } from './modules/services/services.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { NewsModule } from './modules/news/news.module';
     CategoriesModule,
     MediaModule,
     NewsModule,
+    ServicesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

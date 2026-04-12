@@ -1,64 +1,72 @@
-// -----------------------------------------------------------------------------
 // File: src/modules/media/media.service.ts
-// -----------------------------------------------------------------------------
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from '@aws-sdk/client-s3';
-import { v4 as uuidv4 } from 'uuid';
+  v2 as cloudinary,
+  UploadApiResponse,
+  UploadApiErrorResponse,
+} from 'cloudinary';
+import { Readable } from 'stream';
 
 @Injectable()
 export class MediaService {
-  private s3Client: S3Client;
-  private readonly bucketName = process.env.MINIO_BUCKET_NAME;
-
   constructor() {
-    this.s3Client = new S3Client({
-      endpoint: `http://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}`,
-      region: 'us-east-1',
-      credentials: {
-        // SỬA LỖI TẠI ĐÂY: Thêm 'as string' để khẳng định với TypeScript
-        accessKeyId: process.env.MINIO_ROOT_USER as string,
-        secretAccessKey: process.env.MINIO_ROOT_PASSWORD as string,
-      },
-      forcePathStyle: true,
+    // Khởi tạo cấu hình Cloudinary từ biến môi trường
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
     });
   }
 
+  /**
+   * Upload ảnh lên Cloudinary
+   * @param file File từ Multer
+   * @returns URL bảo mật (https) của ảnh trên Cloudinary
+   */
   async uploadFile(file: Express.Multer.File): Promise<string> {
-    const fileExtension = file.originalname.split('.').pop();
-    const fileName = `${uuidv4()}.${fileExtension}`;
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'greentech-media', // Tạo một thư mục riêng trên Cloudinary cho gọn
+          format: 'webp', // (Tùy chọn) Ép kiểu ảnh về WebP để tối ưu SEO & Tốc độ
+          quality: 'auto', // Tự động nén ảnh mà không giảm chất lượng
+        },
+        (error: UploadApiErrorResponse, result: UploadApiResponse) => {
+          if (error) {
+            console.error('Cloudinary Upload Error:', error);
+            return reject(
+              new InternalServerErrorException(
+                'Không thể upload ảnh lên Cloudinary',
+              ),
+            );
+          }
 
-    try {
-      const command = new PutObjectCommand({
-        Bucket: this.bucketName,
-        Key: fileName,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-      });
-
-      await this.s3Client.send(command);
-
-      return `${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${this.bucketName}/${fileName}`;
-    } catch (error) {
-      console.error('MinIO Upload Error:', error);
-      throw new InternalServerErrorException(
-        'Không thể upload file lên storage',
+          // Trả về secure_url (URL https an toàn)
+          if (result) {
+            resolve(result.secure_url);
+          } else {
+            reject(
+              new InternalServerErrorException(
+                'Lỗi không xác định từ Cloudinary',
+              ),
+            );
+          }
+        },
       );
-    }
+
+      // Chuyển đổi buffer của file thành stream và "bơm" lên Cloudinary
+      Readable.from(file.buffer).pipe(uploadStream);
+    });
   }
 
-  async deleteFile(fileName: string): Promise<void> {
+  /**
+   * Xóa file trên Cloudinary (Dùng cho sau này)
+   */
+  async deleteFile(publicId: string): Promise<void> {
     try {
-      const command = new DeleteObjectCommand({
-        Bucket: this.bucketName,
-        Key: fileName,
-      });
-      await this.s3Client.send(command);
+      await cloudinary.uploader.destroy(publicId);
     } catch (error) {
-      console.error('MinIO Delete Error:', error);
+      console.error('Cloudinary Delete Error:', error);
     }
   }
 }

@@ -2,7 +2,8 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
-import { AllExceptionsFilter } from './common/filters/http-exception.filter'; // <-- THÊM
+import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -15,8 +16,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  // 2. Chuẩn hóa Output Thành công (Response)
+  app.useGlobalInterceptors(new TransformInterceptor());
 
-  // 2. Bật Global Exception Filter để chuẩn hóa lỗi (Cực kỳ quan trọng)
+  // 3. Bật Global Exception Filter để chuẩn hóa lỗi (Cực kỳ quan trọng)
   app.useGlobalFilters(new AllExceptionsFilter());
 
   await app.listen(3000);

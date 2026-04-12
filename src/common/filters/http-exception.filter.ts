@@ -6,7 +6,7 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -16,29 +16,39 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
-    let errorCode = 'INTERNAL_ERROR';
+    let message = 'Lỗi hệ thống nội bộ';
+    let errorCode = 'INTERNAL_SERVER_ERROR';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res: any = exception.getResponse();
-      message = res.message || exception.message;
-      // Nếu lỗi có kèm errorCode (do mình chủ động ném ra), lấy nó, nếu không dùng mặc định
-      errorCode = res.errorCode || 'HTTP_EXCEPTION';
+
+      // Xử lý Validation Error (class-validator)
+      if (Array.isArray(res.message)) {
+        message = res.message[0]; // Lấy lỗi đầu tiên để hiển thị cho gọn
+        errorCode = 'VALIDATION_ERROR';
+      } else {
+        message = res.message || exception.message;
+        // Bắt custom errorCode nếu chúng ta chủ động gửi vào
+        errorCode = res.errorCode || 'HTTP_EXCEPTION';
+      }
     } else if (exception instanceof Error) {
-      message = (exception as Error).message;
-      // Xử lý riêng cho các lỗi Prisma để không lộ thông tin DB
-      if ((exception as any).code === 'P2025') {
+      // Bắt các lỗi từ Prisma Database
+      const prismaError = exception as any;
+      if (prismaError.code === 'P2025') {
         status = HttpStatus.NOT_FOUND;
         message = 'Không tìm thấy dữ liệu tương ứng';
         errorCode = 'RECORD_NOT_FOUND';
-      } else if ((exception as any).code === 'P2002') {
+      } else if (prismaError.code === 'P2002') {
         status = HttpStatus.CONFLICT;
-        message = 'Dữ liệu đã tồn tại (Trùng lặp)';
+        message = 'Dữ liệu đã tồn tại (Bị trùng lặp)';
         errorCode = 'DUPLICATE_DATA';
+      } else {
+        message = exception.message;
       }
     }
 
+    // Luôn trả về format chuẩn cho Frontend
     response.status(status).json({
       success: false,
       statusCode: status,
