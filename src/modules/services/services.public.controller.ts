@@ -6,12 +6,13 @@ import { ServicesService } from './services.service';
 export class ServicesPublicController {
   constructor(private readonly servicesService: ServicesService) {}
 
+  // Lấy danh sách Dịch vụ (Đã tự động lọc ngôn ngữ & ẩn bài nháp)
   @Get()
   async findAll(@Query() query: any) {
-    // Gọi hàm findAllPublic để dữ liệu được map chuẩn đa ngôn ngữ
     return this.servicesService.findAllPublic(query);
   }
 
+  // Lấy chi tiết Dịch vụ theo Slug (Chuẩn SEO + Trả về Bản đồ Slug)
   @Get(':slug')
   async findOne(
     @Param('slug') slug: string,

@@ -25,11 +25,9 @@ export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
   @Post()
-  @Roles(Role.SUPER_ADMIN, Role.EDITOR, Role.SALES) // Sales có thể tạo dịch vụ
+  @Roles(Role.SUPER_ADMIN, Role.EDITOR, Role.SALES)
   create(@Body() dto: CreateServiceDto, @Request() req: any) {
-    // Truyền userId của người đang gọi API xuống service
-    const currentUserId = req.user.userId;
-    return this.servicesService.create(dto, currentUserId);
+    return this.servicesService.create(dto, req.user.userId);
   }
 
   @Get()
@@ -46,13 +44,19 @@ export class ServicesController {
 
   @Put(':id')
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
-  update(@Param('id') id: string, @Body() dto: UpdateServiceDto) {
-    return this.servicesService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateServiceDto,
+    @Request() req: any,
+  ) {
+    // 🎯 Truyền userId từ Token xuống Service để Audit Log biết AI đang sửa
+    return this.servicesService.update(id, dto, req.user.userId);
   }
 
   @Delete(':id')
-  @Roles(Role.SUPER_ADMIN) // Chỉ SUPER_ADMIN mới được xóa dịch vụ
-  remove(@Param('id') id: string) {
-    return this.servicesService.remove(id);
+  @Roles(Role.SUPER_ADMIN)
+  remove(@Param('id') id: string, @Request() req: any) {
+    // 🎯 Truyền userId từ Token xuống Service để Audit Log biết AI đang xóa
+    return this.servicesService.remove(id, req.user.userId);
   }
 }

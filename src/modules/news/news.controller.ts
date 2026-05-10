@@ -9,6 +9,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { NewsService } from './news.service';
 import { CreateNewsDto } from './dto/create-news.dto';
@@ -25,8 +26,9 @@ export class NewsController {
 
   @Post()
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
-  create(@Body() dto: CreateNewsDto) {
-    return this.newsService.create(dto);
+  create(@Body() dto: CreateNewsDto, @Request() req: any) {
+    // 🎯 Truyền userId để gán Author và ghi Audit Log
+    return this.newsService.create(dto, req.user.userId);
   }
 
   @Get()
@@ -42,14 +44,20 @@ export class NewsController {
   }
 
   @Put(':id')
-  @Roles(Role.SUPER_ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateNewsDto) {
-    return this.newsService.update(id, dto);
+  @Roles(Role.SUPER_ADMIN, Role.EDITOR)
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateNewsDto,
+    @Request() req: any,
+  ) {
+    // 🎯 Truyền userId để ghi Audit Log ai là người Update
+    return this.newsService.update(id, dto, req.user.userId);
   }
 
   @Delete(':id')
-  @Roles(Role.SUPER_ADMIN)
-  remove(@Param('id') id: string) {
-    return this.newsService.remove(id);
+  @Roles(Role.SUPER_ADMIN) // Chỉ SUPER_ADMIN mới được xóa
+  remove(@Param('id') id: string, @Request() req: any) {
+    // 🎯 Truyền userId để ghi Audit Log ai là người Delete
+    return this.newsService.remove(id, req.user.userId);
   }
 }

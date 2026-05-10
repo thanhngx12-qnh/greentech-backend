@@ -1,24 +1,44 @@
-// src/modules/careers/job-postings.service.ts
+// File: src/modules/careers/job-postings.service.ts
 import {
   Injectable,
   NotFoundException,
   InternalServerErrorException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJobPostingDto } from './dto/create-job-posting.dto';
 import { UpdateJobPostingDto } from './dto/update-job-posting.dto';
 import { GetJobPostingsQueryDto } from './dto/get-job-postings-query.dto';
 import { Prisma } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service'; // <-- IMPORT AUDIT LOG
 
 @Injectable()
 export class JobPostingsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditLogsService: AuditLogsService, // <-- INJECT AUDIT LOG
+  ) {}
 
-  async create(dto: CreateJobPostingDto, authorId: string) {
+  // ========================================================
+  // --- ADMIN METHODS ---
+  // ========================================================
+
+  async create(dto: CreateJobPostingDto, currentUserId: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { id: dto.category_id },
+    });
+    // Đảm bảo tin tuyển dụng phải nằm trong danh mục JOB
+    if (!category || category.type !== 'JOB') {
+      throw new BadRequestException({
+        errorCode: 'INVALID_CATEGORY',
+        message: 'Danh mục không hợp lệ hoặc không phải là Tin tuyển dụng',
+      });
+    }
+
     try {
       const data: Prisma.JobCreateInput = {
         category: { connect: { id: dto.category_id } },
-        author: { connect: { id: authorId } },
+        author: { connect: { id: currentUserId } },
         slug_i18n: { vi: dto.slug_vi, en: dto.slug_en, zh: dto.slug_zh },
         title_i18n: { vi: dto.title_vi, en: dto.title_en, zh: dto.title_zh },
         description_i18n: {
@@ -35,10 +55,26 @@ export class JobPostingsService {
         deadline: dto.deadline ? new Date(dto.deadline) : undefined,
         seo_i18n: dto.seo_i18n as any,
       };
-      return await this.prisma.job.create({ data });
+
+      const newJob = await this.prisma.job.create({ data });
+
+      // 🎯 BẮN LOG: Hành động TẠO MỚI
+      this.auditLogsService.logChange(
+        currentUserId,
+        'CREATE',
+        'JOB_POSTINGS',
+        newJob.id,
+        null,
+        data,
+      );
+
+      return newJob;
     } catch (error) {
-      console.error(error);
-      throw new InternalServerErrorException('Không thể tạo tin tuyển dụng');
+      console.error('Job Create Error:', error);
+      throw new InternalServerErrorException({
+        errorCode: 'CREATE_FAILED',
+        message: 'Không thể tạo tin tuyển dụng',
+      });
     }
   }
 
@@ -61,48 +97,35 @@ export class JobPostingsService {
     if (status) where.status = status;
     if (type) where.type = type;
     if (location) where.location = { contains: location, mode: 'insensitive' };
-    if (search) {
-      where.OR = [
-        {
-          title_i18n: {
-            path: [lang],
-            string_contains: search,
-            mode: 'insensitive',
-          } as any,
-        },
-        {
-          description_i18n: {
-            path: [lang],
-            string_contains: search,
-            mode: 'insensitive',
-          } as any,
-        },
-      ];
-    }
 
-    const [data, total] = await Promise.all([
+    // 🎯 HYBRID SEARCH ĐỂ BẮT TIẾNG VIỆT
+    let [data, total] = await Promise.all([
       this.prisma.job.findMany({
         where,
-        skip,
-        take: limit,
+        skip: search ? undefined : skip,
+        take: search ? undefined : limit,
         orderBy: { [sortBy as string]: order },
         include: { author: { select: { id: true, full_name: true } } },
       }),
       this.prisma.job.count({ where }),
     ]);
 
-    const mappedData = data.map((item) => {
+    if (search) {
+      const term = search.toLowerCase().trim();
       const currentLang = lang as string;
-      return {
-        ...item,
-        title:
-          (item.title_i18n as any)?.[currentLang] ||
-          (item.title_i18n as any)?.['vi'],
-      };
-    });
+      data = data.filter((item) => {
+        const title =
+          (item.title_i18n as any)?.[currentLang]?.toLowerCase() || '';
+        const desc =
+          (item.description_i18n as any)?.[currentLang]?.toLowerCase() || '';
+        return title.includes(term) || desc.includes(term);
+      });
+      total = data.length;
+      data = data.slice(skip, skip + limit);
+    }
 
     return {
-      data: mappedData,
+      data,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -110,13 +133,22 @@ export class JobPostingsService {
   async findOne(id: string) {
     const job = await this.prisma.job.findUnique({
       where: { id },
-      include: { author: true },
+      include: {
+        category: true,
+        author: { select: { id: true, full_name: true, email: true } },
+      },
     });
-    if (!job) throw new NotFoundException('Không tìm thấy tin tuyển dụng');
+    if (!job) {
+      throw new NotFoundException({
+        errorCode: 'JOB_NOT_FOUND',
+        message: 'Không tìm thấy tin tuyển dụng',
+      });
+    }
     return job;
   }
 
-  async update(id: string, dto: UpdateJobPostingDto) {
+  async update(id: string, dto: UpdateJobPostingDto, currentUserId: string) {
+    // <-- THÊM currentUserId
     const existing = await this.findOne(id);
     const updateData: Prisma.JobUpdateInput = {};
 
@@ -153,18 +185,162 @@ export class JobPostingsService {
       } as any;
     }
 
-    return this.prisma.job.update({ where: { id }, data: updateData });
+    if (dto.requirements_i18n)
+      updateData.requirements_i18n = dto.requirements_i18n as any;
+    if (dto.benefits_i18n) updateData.benefits_i18n = dto.benefits_i18n as any;
+    if (dto.seo_i18n) updateData.seo_i18n = dto.seo_i18n as any;
+
+    try {
+      const updatedJob = await this.prisma.job.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // 🎯 BẮN LOG: Hành động CẬP NHẬT
+      this.auditLogsService.logChange(
+        currentUserId,
+        'UPDATE',
+        'JOB_POSTINGS',
+        id,
+        existing,
+        updateData,
+      );
+
+      return updatedJob;
+    } catch (e) {
+      throw new InternalServerErrorException({
+        errorCode: 'UPDATE_FAILED',
+        message: 'Cập nhật thất bại',
+      });
+    }
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.job.update({
+  async remove(id: string, currentUserId: string) {
+    // <-- THÊM currentUserId
+    const existing = await this.findOne(id);
+    const deletedJob = await this.prisma.job.update({
       where: { id },
       data: { deleted_at: new Date() },
     });
+
+    // 🎯 BẮN LOG: Hành động XÓA
+    this.auditLogsService.logChange(
+      currentUserId,
+      'DELETE',
+      'JOB_POSTINGS',
+      id,
+      existing,
+      null,
+    );
+
+    return deletedJob;
   }
 
+  // ========================================================
+  // --- PUBLIC METHODS (Cho Website) ---
+  // ========================================================
+
   async findBySlug(slug: string, lang: string) {
-    return this.findOne(slug);
+    const job = await this.prisma.job.findFirst({
+      where: {
+        status: 'OPEN',
+        deleted_at: null,
+        slug_i18n: { path: [lang], equals: slug } as any,
+      },
+      include: {
+        category: true,
+        author: { select: { id: true, full_name: true } },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException({
+        errorCode: 'JOB_NOT_FOUND',
+        message: 'Tin tuyển dụng không tồn tại hoặc đã hết hạn',
+      });
+    }
+
+    const currentLang = lang as string;
+    const titleObj = job.title_i18n as any;
+    const descObj = job.description_i18n as any;
+    const reqObj = job.requirements_i18n as any;
+    const benObj = job.benefits_i18n as any;
+    const seoObj = job.seo_i18n as any;
+    const slugObj = job.slug_i18n as any;
+
+    return {
+      id: job.id,
+      category: job.category,
+      author: job.author,
+      type: job.type,
+      location: job.location,
+      salary_range: job.salary_range,
+      deadline: job.deadline,
+      created_at: job.created_at,
+
+      title: titleObj?.[currentLang] || titleObj?.['vi'],
+      description: descObj?.[currentLang] || descObj?.['vi'],
+      requirements: reqObj?.[currentLang] || reqObj?.['vi'],
+      benefits: benObj?.[currentLang] || benObj?.['vi'],
+      seo: seoObj?.[currentLang] || seoObj?.['vi'],
+      slug: slugObj?.[currentLang] || slugObj?.['vi'],
+
+      available_slugs: slugObj, // 🎯 BẢN ĐỒ SLUG CHO FRONTEND
+    };
+  }
+
+  // 🎯 HÀM MỚI: BÓC TÁCH DỮ LIỆU ĐA NGÔN NGỮ CHO DANH SÁCH PUBLIC
+  async findAllPublic(query: GetJobPostingsQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const {
+      sortBy = 'created_at',
+      order = 'desc',
+      type,
+      location,
+      lang = 'vi',
+    } = query;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.JobWhereInput = { status: 'OPEN', deleted_at: null };
+    if (type) where.type = type;
+    if (location) where.location = { contains: location, mode: 'insensitive' };
+
+    const [data, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy as string]: order },
+        include: { author: { select: { id: true, full_name: true } } },
+      }),
+      this.prisma.job.count({ where }),
+    ]);
+
+    const currentLang = lang as string;
+    const mappedData = data.map((item) => {
+      const titleObj = item.title_i18n as any;
+      const descObj = item.description_i18n as any;
+      const slugObj = item.slug_i18n as any;
+
+      return {
+        id: item.id,
+        author: item.author,
+        type: item.type,
+        location: item.location,
+        salary_range: item.salary_range,
+        deadline: item.deadline,
+        created_at: item.created_at,
+
+        title: titleObj?.[currentLang] || titleObj?.['vi'],
+        description: descObj?.[currentLang] || descObj?.['vi'],
+        slug: slugObj?.[currentLang] || slugObj?.['vi'],
+      };
+    });
+
+    return {
+      data: mappedData,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 }

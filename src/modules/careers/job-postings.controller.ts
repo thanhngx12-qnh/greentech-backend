@@ -25,40 +25,39 @@ import { Role } from '@prisma/client';
 export class JobPostingsController {
   constructor(private readonly jobPostingsService: JobPostingsService) {}
 
-  // Tạo tin tuyển dụng mới
   @Post()
-  @Roles(Role.SUPER_ADMIN, Role.EDITOR) // Chỉ Admin và Editor mới được đăng tin
+  @Roles(Role.SUPER_ADMIN, Role.EDITOR)
   create(@Body() dto: CreateJobPostingDto, @Request() req: any) {
-    // Tự động lấy ID của người đang thao tác từ JWT Token
-    const authorId = req.user.userId;
-    return this.jobPostingsService.create(dto, authorId);
+    return this.jobPostingsService.create(dto, req.user.userId);
   }
 
-  // Lấy danh sách tin tuyển dụng (có phân trang, tìm kiếm)
   @Get()
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
   findAll(@Query() query: GetJobPostingsQueryDto) {
     return this.jobPostingsService.findAll(query);
   }
 
-  // Xem chi tiết một tin tuyển dụng
   @Get(':id')
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
   findOne(@Param('id') id: string) {
     return this.jobPostingsService.findOne(id);
   }
 
-  // Cập nhật tin tuyển dụng
   @Put(':id')
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
-  update(@Param('id') id: string, @Body() dto: UpdateJobPostingDto) {
-    return this.jobPostingsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateJobPostingDto,
+    @Request() req: any, // 🎯 Bắt request để lấy thông tin User
+  ) {
+    // 🎯 Truyền userId xuống Service để ghi Audit Log
+    return this.jobPostingsService.update(id, dto, req.user.userId);
   }
 
-  // Xóa tin tuyển dụng (Soft Delete)
   @Delete(':id')
-  @Roles(Role.SUPER_ADMIN) // Chỉ SUPER_ADMIN mới có quyền xóa
-  remove(@Param('id') id: string) {
-    return this.jobPostingsService.remove(id);
+  @Roles(Role.SUPER_ADMIN)
+  remove(@Param('id') id: string, @Request() req: any) {
+    // 🎯 Truyền userId xuống Service để ghi Audit Log
+    return this.jobPostingsService.remove(id, req.user.userId);
   }
 }

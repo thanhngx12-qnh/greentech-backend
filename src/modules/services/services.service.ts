@@ -9,18 +9,24 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { Prisma } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service'; // <-- THÊM IMPORT AUDIT LOG
 
 @Injectable()
 export class ServicesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditLogsService: AuditLogsService, // <-- INJECT AUDIT LOG
+  ) {}
 
+  // ========================================================
   // --- ADMIN METHODS ---
+  // ========================================================
 
   async create(dto: CreateServiceDto, currentUserId: string) {
-    // 1. Kiểm tra Category có đúng loại SERVICE không
     const category = await this.prisma.category.findUnique({
       where: { id: dto.category_id },
     });
+
     if (!category || category.type !== 'SERVICE') {
       throw new BadRequestException({
         errorCode: 'INVALID_CATEGORY',
@@ -31,18 +37,14 @@ export class ServicesService {
     try {
       const serviceData: Prisma.ServiceCreateInput = {
         category: { connect: { id: dto.category_id } },
-        // Gán tự động author là người đang login (nếu không được truyền tay)
         author: { connect: { id: dto.author_id || currentUserId } },
 
-        // Dữ liệu thương mại
         price: dto.price,
         currency: dto.currency || 'VND',
         duration: dto.duration,
-
         status: dto.status || 'DRAFT',
         featured_image: dto.featured_image,
 
-        // Mapping JSONB đa ngôn ngữ
         slug_i18n: { vi: dto.slug_vi, en: dto.slug_en, zh: dto.slug_zh },
         title_i18n: { vi: dto.title_vi, en: dto.title_en, zh: dto.title_zh },
         content_i18n: {
@@ -53,64 +55,75 @@ export class ServicesService {
         seo_i18n: dto.seo_i18n as any,
       };
 
-      return await this.prisma.service.create({ data: serviceData });
+      const newService = await this.prisma.service.create({
+        data: serviceData,
+      });
+
+      // 🎯 BẮN LOG: Hành động TẠO MỚI (Chạy ngầm)
+      this.auditLogsService.logChange(
+        currentUserId,
+        'CREATE',
+        'SERVICES',
+        newService.id,
+        null,
+        serviceData,
+      );
+
+      return newService;
     } catch (error) {
       console.error('Service Create Error:', error);
-      throw new InternalServerErrorException('Không thể tạo dịch vụ');
+      throw new InternalServerErrorException({
+        errorCode: 'CREATE_FAILED',
+        message: 'Không thể tạo dịch vụ',
+      });
     }
   }
 
   async findAll(query: any) {
+    // Ép kiểu an toàn để tránh lỗi undefined khi tính skip
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
     const {
-      page = 1,
-      limit = 10,
       sortBy = 'created_at',
       order = 'DESC',
       status,
       search,
+      lang = 'vi',
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.ServiceWhereInput = {};
+    const where: Prisma.ServiceWhereInput = { deleted_at: null };
     if (status) where.status = status;
-    if (search) {
-      where.OR = [
-        {
-          title_i18n: {
-            path: ['vi'],
-            string_contains: search,
-            mode: 'insensitive',
-          } as any,
-        },
-        {
-          title_i18n: {
-            path: ['en'],
-            string_contains: search,
-            mode: 'insensitive',
-          } as any,
-        },
-      ];
-    }
 
-    const [data, total] = await Promise.all([
+    // ÁP DỤNG HYBRID SEARCH ĐỂ XỬ LÝ TIẾNG VIỆT TRONG JSONB
+    let [data, total] = await Promise.all([
       this.prisma.service.findMany({
         where,
-        skip,
-        take: Number(limit),
+        // Nếu có search thì bỏ qua skip/take để lấy hết ra lọc bằng JS, nếu không thì phân trang bình thường
+        skip: search ? undefined : skip,
+        take: search ? undefined : limit,
         orderBy: { [sortBy]: order.toLowerCase() as 'asc' | 'desc' },
-        include: { author: { select: { id: true, full_name: true } } }, // Trả về luôn tên người tạo
+        include: { author: { select: { id: true, full_name: true } } },
       }),
       this.prisma.service.count({ where }),
     ]);
 
+    // Lọc bằng Javascript nếu có từ khóa
+    if (search) {
+      const term = search.toLowerCase().trim();
+      const currentLang = lang as string;
+      data = data.filter((item) => {
+        const title =
+          (item.title_i18n as any)?.[currentLang]?.toLowerCase() || '';
+        return title.includes(term);
+      });
+      total = data.length; // Cập nhật lại tổng số kết quả
+      data = data.slice(skip, skip + limit); // Cắt mảng để phân trang
+    }
+
     return {
       data,
-      meta: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
@@ -122,15 +135,19 @@ export class ServicesService {
         author: { select: { id: true, full_name: true, email: true } },
       },
     });
-    if (!service) throw new NotFoundException('Không tìm thấy dịch vụ');
+    if (!service) {
+      throw new NotFoundException({
+        errorCode: 'SERVICE_NOT_FOUND',
+        message: 'Không tìm thấy dịch vụ',
+      });
+    }
     return service;
   }
 
-  async update(id: string, dto: UpdateServiceDto) {
+  async update(id: string, dto: UpdateServiceDto, currentUserId: string) {
     const existing = await this.findOne(id);
     const updateData: Prisma.ServiceUpdateInput = {};
 
-    // Cập nhật trường vật lý
     if (dto.status) updateData.status = dto.status;
     if (dto.featured_image) updateData.featured_image = dto.featured_image;
     if (dto.category_id)
@@ -139,7 +156,6 @@ export class ServicesService {
     if (dto.currency) updateData.currency = dto.currency;
     if (dto.duration) updateData.duration = dto.duration;
 
-    // Merge JSONB
     if (dto.slug_vi || dto.slug_en || dto.slug_zh) {
       updateData.slug_i18n = {
         vi: dto.slug_vi ?? (existing.slug_i18n as any).vi,
@@ -163,22 +179,54 @@ export class ServicesService {
     }
     if (dto.seo_i18n) updateData.seo_i18n = dto.seo_i18n as any;
 
-    return this.prisma.service.update({
-      where: { id },
-      data: updateData as any,
-    });
+    try {
+      const updatedService = await this.prisma.service.update({
+        where: { id },
+        data: updateData as any,
+      });
+
+      // 🎯 BẮN LOG: Ghi lại hành động CẬP NHẬT
+      this.auditLogsService.logChange(
+        currentUserId,
+        'UPDATE',
+        'SERVICES',
+        id,
+        existing,
+        updateData,
+      );
+
+      return updatedService;
+    } catch (error) {
+      throw new InternalServerErrorException({
+        errorCode: 'UPDATE_FAILED',
+        message: 'Cập nhật dịch vụ thất bại',
+      });
+    }
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    // Áp dụng Soft Delete (ẩn đi thay vì xóa hẳn để bảo vệ dữ liệu kinh doanh)
-    return this.prisma.service.update({
+  async remove(id: string, currentUserId: string) {
+    const existing = await this.findOne(id);
+    const deletedService = await this.prisma.service.update({
       where: { id },
       data: { deleted_at: new Date(), is_active: false },
     });
+
+    // 🎯 BẮN LOG: Ghi lại hành động XÓA
+    this.auditLogsService.logChange(
+      currentUserId,
+      'DELETE',
+      'SERVICES',
+      id,
+      existing,
+      null,
+    );
+
+    return deletedService;
   }
 
+  // ========================================================
   // --- PUBLIC METHODS (Cho Website) ---
+  // ========================================================
 
   async findBySlug(slug: string, lang: string) {
     const service = await this.prisma.service.findFirst({
@@ -186,7 +234,7 @@ export class ServicesService {
         status: 'PUBLISHED',
         is_active: true,
         deleted_at: null,
-        slug_i18n: { path: [lang], equals: slug } as any, // Tìm chính xác theo slug của ngôn ngữ đó
+        slug_i18n: { path: [lang], equals: slug } as any,
       },
       include: {
         category: true,
@@ -194,16 +242,18 @@ export class ServicesService {
       },
     });
 
-    if (!service)
-      throw new NotFoundException(
-        'Dịch vụ không tồn tại hoặc đã ngừng cung cấp',
-      );
+    if (!service) {
+      throw new NotFoundException({
+        errorCode: 'SERVICE_NOT_FOUND',
+        message: 'Dịch vụ không tồn tại hoặc đã ngừng cung cấp',
+      });
+    }
 
-    // MAP DỮ LIỆU CHI TIẾT
     const currentLang = lang as string;
     const titleObj = service.title_i18n as any;
     const contentObj = service.content_i18n as any;
     const seoObj = service.seo_i18n as any;
+    const slugObj = service.slug_i18n as any;
 
     return {
       id: service.id,
@@ -218,21 +268,17 @@ export class ServicesService {
       title: titleObj?.[currentLang] || titleObj?.['vi'],
       content: contentObj?.[currentLang] || contentObj?.['vi'],
       seo: seoObj?.[currentLang] || seoObj?.['vi'],
+      slug: slugObj?.[currentLang] || slugObj?.['vi'],
+
+      // 🎯 TRẢ VỀ BẢN ĐỒ SLUG CHO FRONTEND ĐỔI NGÔN NGỮ
+      available_slugs: slugObj,
     };
   }
 
-  // ========================================================
-  // --- PUBLIC METHODS (Cho Website - Tự động map Đa ngôn ngữ) ---
-  // ========================================================
-
   async findAllPublic(query: any) {
-    const {
-      page = 1,
-      limit = 10,
-      sortBy = 'created_at',
-      order = 'DESC',
-      lang = 'vi',
-    } = query;
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const { sortBy = 'created_at', order = 'DESC', lang = 'vi' } = query;
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
@@ -243,7 +289,7 @@ export class ServicesService {
           deleted_at: null,
         },
         skip,
-        take: Number(limit),
+        take: limit,
         orderBy: { [sortBy]: order.toLowerCase() as 'asc' | 'desc' },
         include: { author: { select: { id: true, full_name: true } } },
       }),
@@ -252,7 +298,6 @@ export class ServicesService {
       }),
     ]);
 
-    // MAP DỮ LIỆU: Chỉ trả về ngôn ngữ khách yêu cầu, giấu các ngôn ngữ khác đi cho nhẹ Web
     const currentLang = lang as string;
     const mappedData = data.map((item) => {
       const titleObj = item.title_i18n as any;
@@ -270,7 +315,6 @@ export class ServicesService {
         featured_image: item.featured_image,
         created_at: item.created_at,
 
-        // Trích xuất đúng ngôn ngữ, nếu ngôn ngữ đó chưa nhập thì lấy tạm tiếng Việt
         title: titleObj?.[currentLang] || titleObj?.['vi'],
         content: contentObj?.[currentLang] || contentObj?.['vi'],
         slug: slugObj?.[currentLang] || slugObj?.['vi'],
@@ -280,12 +324,7 @@ export class ServicesService {
 
     return {
       data: mappedData,
-      meta: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 }

@@ -3,34 +3,45 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateNewsDto } from './dto/create-news.dto';
 import { UpdateNewsDto } from './dto/update-news.dto';
 import { Prisma } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service'; // <-- IMPORT AUDIT LOGS
 
 @Injectable()
 export class NewsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditLogsService: AuditLogsService, // <-- INJECT
+  ) {}
 
+  // ========================================================
   // --- ADMIN METHODS ---
+  // ========================================================
 
-  async create(dto: CreateNewsDto) {
+  async create(dto: CreateNewsDto, currentUserId: string) {
+    // <-- THÊM currentUserId
+    const category = await this.prisma.category.findUnique({
+      where: { id: dto.category_id },
+    });
+    if (!category || category.type !== 'NEWS') {
+      throw new BadRequestException({
+        errorCode: 'INVALID_CATEGORY',
+        message: 'Danh mục không hợp lệ hoặc không phải là Tin tức',
+      });
+    }
+
     try {
       const newsData: Prisma.NewsCreateInput = {
         category: { connect: { id: dto.category_id } },
+        author: { connect: { id: currentUserId } }, // <-- LƯU AUTHOR TỰ ĐỘNG
         status: dto.status || 'DRAFT',
         featured_image: dto.featured_image,
-        slug_i18n: {
-          vi: dto.slug_vi,
-          en: dto.slug_en,
-          zh: dto.slug_zh,
-        },
-        title_i18n: {
-          vi: dto.title_vi,
-          en: dto.title_en,
-          zh: dto.title_zh,
-        },
+        slug_i18n: { vi: dto.slug_vi, en: dto.slug_en, zh: dto.slug_zh },
+        title_i18n: { vi: dto.title_vi, en: dto.title_en, zh: dto.title_zh },
         content_i18n: {
           vi: dto.content_vi,
           en: dto.content_en,
@@ -38,76 +49,93 @@ export class NewsService {
         },
         seo_i18n: dto.seo_i18n as any,
       };
-      return await this.prisma.news.create({ data: newsData });
+
+      const newNews = await this.prisma.news.create({ data: newsData });
+
+      // 🎯 BẮN LOG
+      this.auditLogsService.logChange(
+        currentUserId,
+        'CREATE',
+        'NEWS',
+        newNews.id,
+        null,
+        newsData,
+      );
+
+      return newNews;
     } catch (error) {
       console.error('News Create Error:', error);
-      throw new InternalServerErrorException('Không thể tạo bài viết');
+      throw new InternalServerErrorException({
+        errorCode: 'CREATE_FAILED',
+        message: 'Không thể tạo bài viết',
+      });
     }
   }
 
   async findAll(query: any) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
     const {
-      page = 1,
-      limit = 10,
       sortBy = 'created_at',
       order = 'DESC',
       status,
       search,
+      lang = 'vi',
     } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.NewsWhereInput = {};
+    const where: Prisma.NewsWhereInput = { deleted_at: null };
     if (status) where.status = status;
-    if (search) {
-      where.OR = [
-        {
-          title_i18n: {
-            path: ['vi'],
-            string_contains: search,
-            mode: 'insensitive',
-          } as any,
-        },
-        {
-          title_i18n: {
-            path: ['en'],
-            string_contains: search,
-            mode: 'insensitive',
-          } as any,
-        },
-      ];
-    }
 
-    const [data, total] = await Promise.all([
+    // 🎯 HYBRID SEARCH CHUẨN TIẾNG VIỆT
+    let [data, total] = await Promise.all([
       this.prisma.news.findMany({
         where,
-        skip,
-        take: Number(limit),
+        skip: search ? undefined : skip,
+        take: search ? undefined : limit,
         orderBy: { [sortBy]: order.toLowerCase() as 'asc' | 'desc' },
+        include: { author: { select: { id: true, full_name: true } } }, // <-- INCLUDE AUTHOR
       }),
       this.prisma.news.count({ where }),
     ]);
 
+    if (search) {
+      const term = search.toLowerCase().trim();
+      const currentLang = lang as string;
+      data = data.filter((item) => {
+        const title =
+          (item.title_i18n as any)?.[currentLang]?.toLowerCase() || '';
+        return title.includes(term);
+      });
+      total = data.length;
+      data = data.slice(skip, skip + limit);
+    }
+
     return {
       data,
-      meta: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
   async findOne(id: string) {
     const news = await this.prisma.news.findUnique({
       where: { id },
-      include: { category: true },
+      include: {
+        category: true,
+        author: { select: { id: true, full_name: true, email: true } },
+      },
     });
-    if (!news) throw new NotFoundException('Không tìm thấy bài viết');
+    if (!news) {
+      throw new NotFoundException({
+        errorCode: 'NEWS_NOT_FOUND',
+        message: 'Không tìm thấy bài viết',
+      });
+    }
     return news;
   }
 
-  async update(id: string, dto: UpdateNewsDto) {
+  async update(id: string, dto: UpdateNewsDto, currentUserId: string) {
+    // <-- THÊM currentUserId
     const existing = await this.findOne(id);
     const updateData: Prisma.NewsUpdateInput = {};
 
@@ -144,29 +172,137 @@ export class NewsService {
       updateData.seo_i18n = dto.seo_i18n as any;
     }
 
-    return this.prisma.news.update({ where: { id }, data: updateData as any });
+    const updatedNews = await this.prisma.news.update({
+      where: { id },
+      data: updateData as any,
+    });
+
+    // 🎯 BẮN LOG
+    this.auditLogsService.logChange(
+      currentUserId,
+      'UPDATE',
+      'NEWS',
+      id,
+      existing,
+      updateData,
+    );
+
+    return updatedNews;
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    return this.prisma.news.delete({ where: { id } });
+  async remove(id: string, currentUserId: string) {
+    // <-- THÊM currentUserId
+    const existing = await this.findOne(id);
+
+    // 🎯 XÓA MỀM (Soft Delete)
+    const deletedNews = await this.prisma.news.update({
+      where: { id },
+      data: { deleted_at: new Date() },
+    });
+
+    // 🎯 BẮN LOG
+    this.auditLogsService.logChange(
+      currentUserId,
+      'DELETE',
+      'NEWS',
+      id,
+      existing,
+      null,
+    );
+
+    return deletedNews;
   }
 
-  // --- PUBLIC METHODS ---
+  // ========================================================
+  // --- PUBLIC METHODS (Cho Website) ---
+  // ========================================================
 
   async findBySlug(slug: string, lang: string) {
     const news = await this.prisma.news.findFirst({
       where: {
         status: 'PUBLISHED',
-        slug_i18n: {
-          path: [lang],
-          equals: slug,
-        } as any,
+        deleted_at: null,
+        slug_i18n: { path: [lang], equals: slug } as any,
       },
-      include: { category: true },
+      include: {
+        category: true,
+        author: { select: { id: true, full_name: true } },
+      },
     });
 
-    if (!news) throw new NotFoundException('Không tìm thấy bài viết');
-    return news;
+    if (!news) {
+      throw new NotFoundException({
+        errorCode: 'NEWS_NOT_FOUND',
+        message: 'Không tìm thấy bài viết',
+      });
+    }
+
+    const currentLang = lang as string;
+    const titleObj = news.title_i18n as any;
+    const contentObj = news.content_i18n as any;
+    const seoObj = news.seo_i18n as any;
+    const slugObj = news.slug_i18n as any;
+
+    return {
+      id: news.id,
+      category: news.category,
+      author: news.author,
+      featured_image: news.featured_image,
+      created_at: news.created_at,
+
+      title: titleObj?.[currentLang] || titleObj?.['vi'],
+      content: contentObj?.[currentLang] || contentObj?.['vi'],
+      seo: seoObj?.[currentLang] || seoObj?.['vi'],
+      slug: slugObj?.[currentLang] || slugObj?.['vi'],
+
+      available_slugs: slugObj, // 🎯 BẢN ĐỒ SLUG CHO FRONTEND
+    };
+  }
+
+  // 🎯 HÀM MỚI: BÓC TÁCH DỮ LIỆU ĐA NGÔN NGỮ CHO DANH SÁCH PUBLIC
+  async findAllPublic(query: any) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const { sortBy = 'created_at', order = 'DESC', lang = 'vi' } = query;
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      this.prisma.news.findMany({
+        where: { status: 'PUBLISHED', deleted_at: null },
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: order.toLowerCase() as 'asc' | 'desc' },
+        include: { author: { select: { id: true, full_name: true } } },
+      }),
+      this.prisma.news.count({
+        where: { status: 'PUBLISHED', deleted_at: null },
+      }),
+    ]);
+
+    const currentLang = lang as string;
+    const mappedData = data.map((item) => {
+      const titleObj = item.title_i18n as any;
+      const contentObj = item.content_i18n as any;
+      const slugObj = item.slug_i18n as any;
+      const seoObj = item.seo_i18n as any;
+
+      return {
+        id: item.id,
+        category_id: item.category_id,
+        author: item.author,
+        featured_image: item.featured_image,
+        created_at: item.created_at,
+
+        title: titleObj?.[currentLang] || titleObj?.['vi'],
+        content: contentObj?.[currentLang] || contentObj?.['vi'],
+        slug: slugObj?.[currentLang] || slugObj?.['vi'],
+        seo: seoObj?.[currentLang] || seoObj?.['vi'],
+      };
+    });
+
+    return {
+      data: mappedData,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 }
