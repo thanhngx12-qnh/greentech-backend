@@ -1,5 +1,9 @@
 // File: src/modules/auth/auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -13,16 +17,21 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  // Đăng ký Admin
+  // Đăng ký Admin đầu tiên
   async register(dto: RegisterDto) {
     const existingUser = await this.usersService.findByEmail(dto.email);
-    if (existingUser) throw new Error('Email đã tồn tại');
+    if (existingUser) {
+      throw new BadRequestException({
+        errorCode: 'EMAIL_EXISTS',
+        message: 'Email đã tồn tại',
+      });
+    }
 
     const user = await this.usersService.create({
       email: dto.email,
       password: dto.password,
       full_name: dto.full_name,
-      role: 'SUPER_ADMIN', // Mặc định là Super Admin cho lần đầu
+      role: 'SUPER_ADMIN',
     });
 
     return { message: 'Đăng ký thành công', userId: user.id };
@@ -31,12 +40,20 @@ export class AuthService {
   // Đăng nhập
   async login(dto: LoginDto) {
     const user = await this.usersService.findByEmail(dto.email);
-    if (!user)
-      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    if (!user) {
+      throw new UnauthorizedException({
+        errorCode: 'AUTH_FAILED',
+        message: 'Email hoặc mật khẩu không đúng',
+      });
+    }
 
     const isMatch = await bcrypt.compare(dto.password, user.password);
-    if (!isMatch)
-      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+    if (!isMatch) {
+      throw new UnauthorizedException({
+        errorCode: 'AUTH_FAILED',
+        message: 'Email hoặc mật khẩu không đúng',
+      });
+    }
 
     // Tạo JWT Token
     const payload = { sub: user.id, email: user.email, role: user.role };

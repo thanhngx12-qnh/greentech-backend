@@ -17,6 +17,9 @@ import { JobApplicationsModule } from './modules/job-applications/job-applicatio
 import { SearchModule } from './modules/search/search.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { SlidersModule } from './modules/sliders/sliders.module';
+import { HealthModule } from './modules/health/health.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -33,6 +36,19 @@ import { SlidersModule } from './modules/sliders/sliders.module';
     SearchModule,
     AuditLogsModule,
     SlidersModule,
+    HealthModule,
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000, // Thời gian (miliseconds) - ở đây là 1 phút
+        limit: 20, // Số lần gọi tối đa trong 1 phút cho các API thông thường
+      },
+      {
+        name: 'strict',
+        ttl: 60000,
+        limit: 3, // Chỉ cho phép 3 lần/phút cho các API nhạy cảm (Form)
+      },
+    ]),
     BullModule.forRoot({
       connection: {
         host: 'localhost',
@@ -42,6 +58,13 @@ import { SlidersModule } from './modules/sliders/sliders.module';
     }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    // 🎯 Kích hoạt bảo vệ toàn hệ thống bằng ThrottlerGuard
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

@@ -23,6 +23,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status = exception.getStatus();
       const res: any = exception.getResponse();
 
+      if (status === 429) {
+        errorCode = 'TOO_MANY_REQUESTS';
+        message = 'Bạn đang thao tác quá nhanh. Vui lòng thử lại sau 1 phút.';
+      } else {
+        errorCode = res.errorCode || 'HTTP_EXCEPTION';
+      }
+
       // Xử lý Validation Error (class-validator)
       if (Array.isArray(res.message)) {
         message = res.message[0]; // Lấy lỗi đầu tiên để hiển thị cho gọn

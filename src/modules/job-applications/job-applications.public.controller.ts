@@ -10,6 +10,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JobApplicationsService } from './job-applications.service';
 import { SubmitApplicationDto } from './dto/submit-application.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('api/public/job-applications')
 export class JobApplicationsPublicController {
@@ -19,6 +20,7 @@ export class JobApplicationsPublicController {
 
   @Post()
   @UseInterceptors(FileInterceptor('file')) // Frontend bắt buộc gửi file với key là 'file'
+  @Throttle({ strict: { limit: 3, ttl: 60000 } })
   submitForm(
     @Body() dto: SubmitApplicationDto,
     @UploadedFile() file: Express.Multer.File,
