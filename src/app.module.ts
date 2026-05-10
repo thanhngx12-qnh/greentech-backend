@@ -10,6 +10,9 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { MediaModule } from './modules/media/media.module';
 import { NewsModule } from './modules/news/news.module';
 import { ServicesModule } from './modules/services/services.module';
+import { BullModule } from '@nestjs/bullmq';
+import { LeadsModule } from './modules/leads/leads.module';
+import { CareersModule } from './modules/careers/careers.module';
 
 @Module({
   imports: [
@@ -20,6 +23,15 @@ import { ServicesModule } from './modules/services/services.module';
     MediaModule,
     NewsModule,
     ServicesModule,
+    LeadsModule,
+    CareersModule,
+    BullModule.forRoot({
+      connection: {
+        host: 'localhost',
+        port: 6379,
+        maxRetriesPerRequest: null,
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

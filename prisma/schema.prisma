@@ -38,6 +38,7 @@ model User {
   audit_logs AuditLog[]
   news     News[]
   services Service[]
+  jobs     Job[]
 
   @@map("users")
 }
@@ -65,7 +66,8 @@ model AuditLog {
 enum CategoryType {
   NEWS       
   SERVICE    
-  STANDARD   
+  STANDARD
+  JOB
 }
 
 model Category {
@@ -88,19 +90,20 @@ model Category {
 
   news     News[]     
   services Service[]
+  jobs     Job[] 
 
   @@map("categories")
 }
 
 // ==========================================
-// 3. QUẢN LÝ FORM LIÊN HỆ & KHÁCH HÀNG (LEADS)
+// 3. QUẢN LÝ FORM LIÊN HỆ & KHÁCH HÀNG (LEADS) - ĐÃ CẬP NHẬT
 // ==========================================
 
 enum LeadStatus {
-  NEW         
-  CONTACTED   
-  QUALIFIED   
-  CLOSED      
+  NEW         // Mới gửi
+  CONTACTED   // Đã liên hệ
+  QUALIFIED   // Khách hàng tiềm năng
+  CLOSED      // Đóng/Hoàn thành
 }
 
 model Lead {
@@ -112,9 +115,9 @@ model Lead {
   content       String     @db.Text
   
   status        LeadStatus @default(NEW)
-  consent_email Boolean    @default(false) 
+  consent_email Boolean    @default(false) // Khách tick chọn đồng ý nhận email
   
-  // Tracking & UTM
+  // Tracking & UTM (Yêu cầu từ Checklist)
   utm_source    String?
   utm_medium    String?
   utm_campaign  String?
@@ -126,7 +129,6 @@ model Lead {
 
   @@map("leads")
 }
-
 
 // ==========================================
 // 4. QUẢN LÝ NỘI DUNG (NEWS & SERVICES)
@@ -216,4 +218,76 @@ enum ServiceStatus {
   DRAFT
   PUBLISHED
   UNPUBLISHED
+}
+
+// 2. Thêm Enum JobType (Hình thức làm việc)
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  FREELANCE
+  INTERN
+}
+
+// 3. Thêm Enum JobStatus
+enum JobStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+// 6. MODEL JOB (Tin tuyển dụng)
+model Job {
+  id                String      @id @default(uuid())
+  category_id       Int
+  author_id         String      // Người tạo tin
+
+  // Nội dung đa ngôn ngữ
+  slug_i18n         Json        // {"vi": "ky-su-moi-truong", "en": "environmental-engineer"}
+  title_i18n        Json        // {"vi": "Kỹ sư môi trường", "en": "..."}
+  description_i18n  Json        // Nội dung mô tả (HTML)
+  requirements_i18n Json        // Yêu cầu công việc (HTML)
+  benefits_i18n     Json        // Quyền lợi (HTML)
+
+  // Thông tin vật lý
+  type              JobType     @default(FULL_TIME) // <--- MỚI: Hình thức làm việc
+  location          String      // Địa điểm (VD: Hà Nội, Hồ Chí Minh)
+  salary_range      String?     // Khoảng lương (VD: 15-20 triệu)
+  deadline          DateTime?   // Hạn nộp hồ sơ
+
+  // Quản trị & SEO
+  status            JobStatus   @default(DRAFT)
+  seo_i18n          Json?       // SEO Suite
+  
+  created_at        DateTime    @default(now())
+  updated_at        DateTime    @updatedAt
+  deleted_at        DateTime?
+
+  // QUAN HỆ
+  category          Category    @relation(fields: [category_id], references: [id])
+  author            User        @relation(fields: [author_id], references: [id])
+  applications      JobApplication[]
+
+  @@map("jobs")
+}
+
+// 7. MODEL JOB_APPLICATION (Hồ sơ ứng viên - Dùng cho Giai đoạn 2)
+model JobApplication {
+  id              String    @id @default(uuid())
+  job_id          String
+  
+  full_name       String
+  email           String
+  phone           String
+  cv_url          String    // Link file CV trên Cloudinary
+  message         String?   @db.Text
+  
+  status          String    @default("NEW") // NEW, REVIEWING, INTERVIEW, REJECTED, HIRED
+  
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  job             Job       @relation(fields: [job_id], references: [id])
+
+  @@map("job_applications")
 }
