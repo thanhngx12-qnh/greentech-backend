@@ -13,6 +13,7 @@ import { ServicesModule } from './modules/services/services.module';
 import { BullModule } from '@nestjs/bullmq';
 import { LeadsModule } from './modules/leads/leads.module';
 import { CareersModule } from './modules/careers/careers.module';
+import { JobApplicationsModule } from './modules/job-applications/job-applications.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { CareersModule } from './modules/careers/careers.module';
     ServicesModule,
     LeadsModule,
     CareersModule,
+    JobApplicationsModule,
     BullModule.forRoot({
       connection: {
         host: 'localhost',

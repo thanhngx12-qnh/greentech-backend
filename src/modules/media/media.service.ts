@@ -10,7 +10,6 @@ import { Readable } from 'stream';
 @Injectable()
 export class MediaService {
   constructor() {
-    // Khởi tạo cấu hình Cloudinary từ biến môi trường
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
@@ -18,30 +17,35 @@ export class MediaService {
     });
   }
 
-  /**
-   * Upload ảnh lên Cloudinary
-   * @param file File từ Multer
-   * @returns URL bảo mật (https) của ảnh trên Cloudinary
-   */
   async uploadFile(file: Express.Multer.File): Promise<string> {
     return new Promise((resolve, reject) => {
+      // 1. Kiểm tra xem file gửi lên là ẢNH hay TÀI LIỆU
+      const isImage = file.mimetype.startsWith('image/');
+
+      // 2. Cấu hình thông minh
+      const options: any = {
+        folder: 'greentech-media',
+        resource_type: 'auto', // Cloudinary tự nhận diện File, Image hoặc Video
+      };
+
+      // 3. Nếu là Ảnh (từ TinyMCE), tự động nén và ép sang WebP
+      if (isImage) {
+        options.format = 'webp';
+        options.quality = 'auto';
+      }
+
+      // 4. Bắt đầu luồng Upload
       const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          folder: 'greentech-media', // Tạo một thư mục riêng trên Cloudinary cho gọn
-          format: 'webp', // (Tùy chọn) Ép kiểu ảnh về WebP để tối ưu SEO & Tốc độ
-          quality: 'auto', // Tự động nén ảnh mà không giảm chất lượng
-        },
+        options,
         (error: UploadApiErrorResponse, result: UploadApiResponse) => {
           if (error) {
-            console.error('Cloudinary Upload Error:', error);
+            console.error('Cloudinary Upload Error Detail:', error.message);
             return reject(
               new InternalServerErrorException(
-                'Không thể upload ảnh lên Cloudinary',
+                'Không thể upload file lên Cloudinary',
               ),
             );
           }
-
-          // Trả về secure_url (URL https an toàn)
           if (result) {
             resolve(result.secure_url);
           } else {
@@ -54,11 +58,9 @@ export class MediaService {
         },
       );
 
-      // Chuyển đổi buffer của file thành stream và "bơm" lên Cloudinary
       Readable.from(file.buffer).pipe(uploadStream);
     });
   }
-
   /**
    * Xóa file trên Cloudinary (Dùng cho sau này)
    */
