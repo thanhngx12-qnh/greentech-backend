@@ -291,3 +291,17 @@ model JobApplication {
 
   @@map("job_applications")
 }
+
+// ==========================================
+// 6. MODULE TÌM KIẾM & THỐNG KÊ (SEARCH LOGS)
+// ==========================================
+
+model SearchLog {
+  id            String   @id @default(uuid())
+  keyword       String   // Từ khóa khách hàng gõ
+  lang          String   @default("vi") // Ngôn ngữ lúc tìm kiếm
+  results_count Int      @default(0) // Số lượng kết quả tìm thấy (để biết từ khóa nào tìm không ra kết quả)
+  created_at    DateTime @default(now())
+
+  @@map("search_logs")
+}
