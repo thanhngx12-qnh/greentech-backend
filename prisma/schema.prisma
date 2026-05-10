@@ -305,3 +305,38 @@ model SearchLog {
 
   @@map("search_logs")
 }
+
+// ==========================================
+// 7. MODULE SLIDERS (QUẢN LÝ BANNER)
+// ==========================================
+
+// Danh sách các vị trí đặt Banner cố định
+enum SliderPosition {
+  HOME_TOP        // Banner to nhất ở trang chủ
+  HOME_MIDDLE     // Banner nằm giữa trang chủ (phần kêu gọi hành động)
+  SERVICES_TOP    // Banner ở đầu trang danh sách Dịch vụ
+  NEWS_TOP        // Banner ở đầu trang Tin tức
+  CONTACT_TOP     // Banner ở trang Liên hệ
+}
+
+model Slider {
+  id            Int            @id @default(autoincrement())
+  name          String         // Tên định danh nội bộ
+  position      SliderPosition @default(HOME_TOP)
+  
+  // 🎯 NÂNG CẤP: Lưu toàn bộ nội dung theo ngôn ngữ vào đây
+  // Cấu trúc: { 
+  //   "vi": { "image_desktop": "...", "image_mobile": "...", "title": "...", "link": "..." },
+  //   "en": { ... }
+  // }
+  content_i18n  Json  @default("{}") // Thêm giá trị mặc định là một object rỗng
+
+  is_active     Boolean        @default(true)
+  order         Int            @default(0)
+
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+  deleted_at    DateTime?
+
+  @@map("sliders")
+}

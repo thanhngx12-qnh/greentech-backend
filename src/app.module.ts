@@ -16,6 +16,7 @@ import { CareersModule } from './modules/careers/careers.module';
 import { JobApplicationsModule } from './modules/job-applications/job-applications.module';
 import { SearchModule } from './modules/search/search.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { SlidersModule } from './modules/sliders/sliders.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
     JobApplicationsModule,
     SearchModule,
     AuditLogsModule,
+    SlidersModule,
     BullModule.forRoot({
       connection: {
         host: 'localhost',
