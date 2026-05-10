@@ -7,8 +7,10 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 export class LeadsPublicController {
   constructor(private readonly leadsService: LeadsService) {}
 
+  // API tiếp nhận Form đăng ký tư vấn/báo giá từ khách hàng
   @Post()
-  submitForm(@Body() dto: CreateLeadDto) {
+  async submitForm(@Body() dto: CreateLeadDto) {
+    // Luồng: Validate -> AntiSpam -> Lưu DB -> Bắn Queue -> Trả về Success
     return this.leadsService.submitForm(dto);
   }
 }

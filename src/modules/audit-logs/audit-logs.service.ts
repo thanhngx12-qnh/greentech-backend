@@ -13,7 +13,15 @@ export class AuditLogsService {
   async logChange(
     userId: string,
     action: 'CREATE' | 'UPDATE' | 'DELETE',
-    moduleName: 'NEWS' | 'SERVICES' | 'JOB_POSTINGS' | 'CATEGORIES' | 'LEADS',
+    // 🎯 CẬP NHẬT: Thêm SLIDERS và STANDARDS vào danh sách cho phép
+    moduleName:
+      | 'NEWS'
+      | 'SERVICES'
+      | 'JOB_POSTINGS'
+      | 'CATEGORIES'
+      | 'LEADS'
+      | 'SLIDERS'
+      | 'STANDARDS',
     recordId: string,
     oldData?: any,
     newData?: any,
