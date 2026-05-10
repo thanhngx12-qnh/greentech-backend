@@ -11,19 +11,22 @@ import { Queue } from 'bullmq';
 import { SubmitApplicationDto } from './dto/submit-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
 import { GetApplicationsQueryDto } from './dto/get-applications-query.dto';
+import { ExportApplicationsQueryDto } from './dto/export-applications-query.dto'; // <-- IMPORT DTO MỚI
 import { Prisma } from '@prisma/client';
+import { Parser } from 'json2csv'; // <-- IMPORT PARSER
+import { AuditLogsService } from '../audit-logs/audit-logs.service'; // <-- IMPORT AUDIT LOG
 
 @Injectable()
 export class JobApplicationsService {
   constructor(
     private prisma: PrismaService,
-    private mediaService: MediaService, // Tái sử dụng MediaService upload Cloudinary
+    private mediaService: MediaService,
+    private auditLogsService: AuditLogsService, // <-- INJECT AUDIT LOG
     @InjectQueue('job-applications-queue') private queue: Queue,
   ) {}
 
-  // --- PUBLIC: NỘP CV ---
+  // --- PUBLIC: NỘP CV (Giữ nguyên logic cũ) ---
   async submit(dto: SubmitApplicationDto, file: Express.Multer.File) {
-    // 1. Kiểm tra Job có tồn tại và đang OPEN không
     const job = await this.prisma.job.findUnique({ where: { id: dto.job_id } });
     if (!job || job.status !== 'OPEN') {
       throw new BadRequestException({
@@ -32,7 +35,6 @@ export class JobApplicationsService {
       });
     }
 
-    // 2. Validate định dạng file CV (Chỉ nhận PDF, DOC, DOCX)
     const allowedMimeTypes = [
       'application/pdf',
       'application/msword',
@@ -46,10 +48,8 @@ export class JobApplicationsService {
     }
 
     try {
-      // 3. Upload CV lên Cloudinary
       const cvUrl = await this.mediaService.uploadFile(file);
 
-      // 4. Lưu vào Database
       const application = await this.prisma.jobApplication.create({
         data: {
           job: { connect: { id: dto.job_id } },
@@ -57,12 +57,11 @@ export class JobApplicationsService {
           email: dto.email,
           phone: dto.phone,
           message: dto.message,
-          cv_url: cvUrl, // Link Cloudinary
+          cv_url: cvUrl,
           status: 'NEW',
         },
       });
 
-      // 5. Quăng vào Hàng đợi (Queue) để gửi Email ngầm
       await this.queue.add('process-new-cv', {
         applicationId: application.id,
         candidateName: application.full_name,
@@ -79,7 +78,7 @@ export class JobApplicationsService {
     }
   }
 
-  // --- ADMIN: QUẢN LÝ CV ---
+  // --- ADMIN: QUẢN LÝ DANH SÁCH CV ---
   async findAll(query: GetApplicationsQueryDto) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -101,19 +100,18 @@ export class JobApplicationsService {
         where,
         skip,
         take: limit,
-        orderBy: { created_at: 'desc' }, // CV mới nhất xếp lên đầu
+        orderBy: { created_at: 'desc' },
         include: {
-          job: { select: { title_i18n: true } }, // Kèm theo tên của tin tuyển dụng
+          job: { select: { title_i18n: true } },
         },
       }),
       this.prisma.jobApplication.count({ where }),
     ]);
 
-    // Map lại data cho đẹp
     const mappedData = data.map((app) => ({
       ...app,
       job_title: (app.job.title_i18n as any)?.vi || 'N/A',
-      job: undefined, // Dọn dẹp object lồng
+      job: undefined,
     }));
 
     return {
@@ -122,10 +120,100 @@ export class JobApplicationsService {
     };
   }
 
-  async updateStatus(id: string, dto: UpdateApplicationStatusDto) {
-    return this.prisma.jobApplication.update({
+  // 🎯 CẬP NHẬT: Thêm currentUserId để ghi Audit Log
+  async updateStatus(
+    id: string,
+    dto: UpdateApplicationStatusDto,
+    currentUserId: string,
+  ) {
+    const existing = await this.prisma.jobApplication.findUnique({
+      where: { id },
+    });
+    if (!existing)
+      throw new BadRequestException('Không tìm thấy hồ sơ ứng viên');
+
+    const updated = await this.prisma.jobApplication.update({
       where: { id },
       data: { status: dto.status },
     });
+
+    // Ghi log hành động HR cập nhật trạng thái ứng viên
+    this.auditLogsService.logChange(
+      currentUserId,
+      'UPDATE',
+      'JOB_POSTINGS',
+      id,
+      existing,
+      { status: dto.status },
+    );
+
+    return updated;
+  }
+
+  // --- 🎯 ADMIN METHOD: XUẤT FILE CSV HỒ SƠ ỨNG VIÊN ---
+  async exportToCsv(query: ExportApplicationsQueryDto, currentUserId: string) {
+    const { job_id, status, startDate, endDate, lang = 'vi' } = query;
+
+    const where: Prisma.JobApplicationWhereInput = {};
+    if (job_id) where.job_id = job_id;
+    if (status) where.status = status;
+    if (startDate || endDate) {
+      where.created_at = {
+        gte: startDate ? new Date(startDate) : undefined,
+        lte: endDate ? new Date(endDate) : undefined,
+      };
+    }
+
+    const applications = await this.prisma.jobApplication.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      include: { job: { select: { title_i18n: true } } },
+    });
+
+    // Định nghĩa các cột cho file Excel ứng viên
+    const fields = [
+      {
+        label: lang === 'vi' ? 'Ngày nộp' : 'Date',
+        value: (row: any) => row.created_at.toLocaleString('vi-VN'),
+      },
+      {
+        label: lang === 'vi' ? 'Họ tên ứng viên' : 'Candidate Name',
+        value: 'full_name',
+      },
+      { label: 'Email', value: 'email' },
+      { label: lang === 'vi' ? 'Số điện thoại' : 'Phone', value: 'phone' },
+      {
+        label: lang === 'vi' ? 'Vị trí ứng tuyển' : 'Applied Position',
+        value: (row: any) => (row.job.title_i18n as any)?.vi || 'N/A',
+      },
+      { label: lang === 'vi' ? 'Trạng thái' : 'Status', value: 'status' },
+      { label: lang === 'vi' ? 'Lời nhắn' : 'Message', value: 'message' },
+      {
+        label: lang === 'vi' ? 'Link CV (Cloudinary)' : 'CV Link',
+        value: 'cv_url',
+      },
+    ];
+
+    try {
+      const json2csvParser = new Parser({ fields, withBOM: true });
+      const csv = json2csvParser.parse(applications);
+
+      // Ghi Audit Log hành động xuất dữ liệu nhạy cảm của ứng viên
+      this.auditLogsService.logChange(
+        currentUserId,
+        'UPDATE',
+        'JOB_POSTINGS',
+        'ALL',
+        null,
+        { action: 'EXPORT_APPLICATIONS_CSV', filters: query },
+      );
+
+      return csv;
+    } catch (error) {
+      console.error('Export Applications CSV Error:', error);
+      throw new InternalServerErrorException(
+        'Lỗi khi xuất file danh sách ứng viên',
+      );
+    }
   }
 }
