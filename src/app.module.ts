@@ -20,6 +20,7 @@ import { SlidersModule } from './modules/sliders/sliders.module';
 import { HealthModule } from './modules/health/health.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { StandardsModule } from './modules/standards/standards.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { APP_GUARD } from '@nestjs/core';
     AuditLogsModule,
     SlidersModule,
     HealthModule,
+    StandardsModule,
     ThrottlerModule.forRoot([
       {
         name: 'default',

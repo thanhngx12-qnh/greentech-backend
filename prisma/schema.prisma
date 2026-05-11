@@ -39,6 +39,7 @@ model User {
   news     News[]
   services Service[]
   jobs     Job[]
+  standards Standard[]
 
   @@map("users")
 }
@@ -91,6 +92,7 @@ model Category {
   news     News[]     
   services Service[]
   jobs     Job[] 
+  standards Standard[]
 
   @@map("categories")
 }
@@ -339,4 +341,39 @@ model Slider {
   deleted_at    DateTime?
 
   @@map("sliders")
+}
+
+// ==========================================
+// 8. MODULE THƯ VIỆN TIÊU CHUẨN (STANDARDS)
+// ==========================================
+
+model Standard {
+  id            String      @id @default(uuid())
+  category_id   Int
+  author_id     String?     // Người đăng tải tài liệu
+  
+  // Thông tin định danh (Vật lý - để dễ search)
+  code          String      @unique // Mã tiêu chuẩn (VD: "QCVN 40:2011/BTNMT")
+  
+  // Nội dung đa ngôn ngữ
+  slug_i18n     Json        // {"vi": "qcvn-40-2011", "en": "..."}
+  title_i18n    Json        // {"vi": "Quy chuẩn kỹ thuật quốc gia về nước thải công nghiệp", "en": "..."}
+  content_i18n  Json?       // Tóm tắt nội dung tiêu chuẩn (HTML từ TinyMCE)
+
+  // File tài liệu (Lưu link Cloudinary PDF)
+  file_url      String?     
+  
+  // SEO & Quản trị
+  seo_i18n      Json?       
+  status        NewsStatus  @default(PUBLISHED) // Dùng chung enum với News
+  
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+  deleted_at    DateTime?
+
+  // QUAN HỆ
+  category      Category    @relation(fields: [category_id], references: [id])
+  author        User?       @relation(fields: [author_id], references: [id])
+
+  @@map("standards")
 }
