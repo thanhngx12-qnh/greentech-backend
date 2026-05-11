@@ -10,7 +10,7 @@ import {
   Request,
   Res,
 } from '@nestjs/common';
-import * as express from 'express'; // 🎯 FIX: Import namespace để tránh lỗi TypeScript
+import * as express from 'express';
 import { JobApplicationsService } from './job-applications.service';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
 import { GetApplicationsQueryDto } from './dto/get-applications-query.dto';
@@ -19,48 +19,56 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Role } from '@prisma/client';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 
-@Controller('admin/job-applications')
+@ApiTags('Admin - Quản lý Ứng viên (Job Applications)')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('admin/job-applications')
 export class JobApplicationsController {
   constructor(
     private readonly jobApplicationsService: JobApplicationsService,
   ) {}
 
-  // Lấy danh sách ứng viên (Hiển thị lên bảng quản trị)
   @Get()
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
+  @ApiOperation({
+    summary: 'Lấy danh sách hồ sơ ứng viên (Kèm lọc & phân trang)',
+  })
   findAll(@Query() query: GetApplicationsQueryDto) {
     return this.jobApplicationsService.findAll(query);
   }
 
-  // 🎯 API XUẤT CSV: Tải danh sách ứng viên và link CV về máy
   @Get('export')
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
+  @ApiOperation({ summary: 'Xuất file Excel/CSV danh sách hồ sơ ứng viên' })
   async exportApplications(
     @Query() query: ExportApplicationsQueryDto,
     @Request() req: any,
     @Res() res: express.Response,
   ) {
-    // Gọi service để lấy dữ liệu CSV và ghi log hành động
     const csv = await this.jobApplicationsService.exportToCsv(
       query,
       req.user.userId,
     );
-
-    // Thiết lập tên file theo ngày hiện tại
     const filename = `Greentech_CV_List_${new Date().toISOString().split('T')[0]}.csv`;
 
-    // Thiết lập Header để trình duyệt hiểu là file tải về
     res.header('Content-Type', 'text/csv; charset=utf-8');
     res.attachment(filename);
-
     return res.send(csv);
   }
 
-  // Cập nhật trạng thái xử lý hồ sơ (Kèm ghi log người thực hiện)
   @Put(':id/status')
   @Roles(Role.SUPER_ADMIN, Role.EDITOR)
+  @ApiOperation({
+    summary: 'Cập nhật trạng thái xử lý hồ sơ (VD: Mời phỏng vấn, Từ chối...)',
+  })
+  @ApiParam({ name: 'id', description: 'ID của hồ sơ cần cập nhật' })
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateApplicationStatusDto,

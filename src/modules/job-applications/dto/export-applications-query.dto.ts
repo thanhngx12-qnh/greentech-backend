@@ -1,35 +1,37 @@
 // File: src/modules/job-applications/dto/export-applications-query.dto.ts
 import { IsOptional, IsString, IsDateString, IsIn } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
-// 🎯 Định nghĩa danh sách trạng thái hợp lệ để validate (Khớp với comment trong Schema)
 const VALID_STATUSES = ['NEW', 'REVIEWING', 'INTERVIEW', 'REJECTED', 'HIRED'];
 
 export class ExportApplicationsQueryDto {
+  @ApiPropertyOptional({
+    description: 'Chỉ xuất hồ sơ của một tin tuyển dụng (Job ID)',
+  })
   @IsOptional()
   @IsString()
   job_id?: string;
 
+  @ApiPropertyOptional({
+    enum: VALID_STATUSES,
+    description: 'Lọc hồ sơ theo trạng thái trước khi xuất',
+  })
   @IsOptional()
   @IsString()
-  @IsIn(VALID_STATUSES, {
-    message: `Trạng thái không hợp lệ. Phải thuộc: ${VALID_STATUSES.join(', ')}`,
-  })
-  status?: string; // 🎯 SỬA: Dùng kiểu string thay vì Enum
+  @IsIn(VALID_STATUSES)
+  status?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc từ ngày (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString(
-    {},
-    { message: 'Ngày bắt đầu không đúng định dạng ISO (YYYY-MM-DD)' },
-  )
+  @IsDateString()
   startDate?: string;
 
+  @ApiPropertyOptional({ description: 'Lọc đến ngày (YYYY-MM-DD)' })
   @IsOptional()
-  @IsDateString(
-    {},
-    { message: 'Ngày kết thúc không đúng định dạng ISO (YYYY-MM-DD)' },
-  )
+  @IsDateString()
   endDate?: string;
 
+  @ApiPropertyOptional({ default: 'vi' })
   @IsOptional()
   @IsString()
   lang?: string = 'vi';

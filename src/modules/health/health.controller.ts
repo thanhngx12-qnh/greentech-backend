@@ -9,8 +9,10 @@ import {
 } from '@nestjs/terminus';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Transport } from '@nestjs/microservices';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
-@Controller('api/health') // Endpoint: http://localhost:3000/api/health
+@ApiTags('DevOps - Health Check')
+@Controller('api/health')
 export class HealthController {
   constructor(
     private health: HealthCheckService,
@@ -22,12 +24,25 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
+  @ApiOperation({
+    summary: 'Kiểm tra "sức khỏe" toàn bộ hệ thống',
+    description:
+      'API này được dùng bởi hệ thống giám sát (Monitoring) để kiểm tra xem các dịch vụ cốt lõi (Database, Redis...) có đang hoạt động bình thường không. Nếu một trong các dịch vụ "down", API sẽ trả về lỗi 503.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tất cả dịch vụ đều đang hoạt động tốt (UP).',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Một hoặc nhiều dịch vụ đang gặp sự cố (DOWN).',
+  })
   check() {
     return this.health.check([
       // 1. Kiểm tra kết nối tới Database (PostgreSQL)
       () => this.db.pingCheck('database', this.prisma),
 
-      // 2. Kiểm tra kết nối tới Redis
+      // 2. Kiểm tra kết nối tới Redis (Dùng cho Queue)
       () =>
         this.redis.pingCheck('redis', {
           transport: Transport.REDIS,
@@ -37,8 +52,8 @@ export class HealthController {
           },
         }),
 
-      // 3. Kiểm tra website có đang phản hồi không (Tự check chính mình)
-      () => this.http.pingCheck('nestjs-docs', 'https://docs.nestjs.com'),
+      // 3. Kiểm tra kết nối internet của server
+      () => this.http.pingCheck('outbound_internet', 'https://google.com'),
     ]);
   }
 }

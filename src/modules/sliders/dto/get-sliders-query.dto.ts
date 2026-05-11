@@ -2,13 +2,41 @@
 import { IsOptional, IsInt, IsString, Min, Max, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SliderPosition } from '@prisma/client';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class GetSlidersQueryDto {
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number = 1;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number =
-    10;
+  @ApiPropertyOptional({ default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number = 1;
 
-  @IsOptional() @IsEnum(SliderPosition) position?: SliderPosition;
-  @IsOptional() @IsString() status?: string;
-  @IsOptional() @IsString() lang?: string = 'vi';
+  @ApiPropertyOptional({ default: 10 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number = 10;
+
+  @ApiPropertyOptional({
+    enum: SliderPosition,
+    description: 'Lọc banner theo vị trí',
+  })
+  @IsOptional()
+  @IsEnum(SliderPosition)
+  position?: SliderPosition;
+
+  @ApiPropertyOptional({
+    description: "Trạng thái: 'true' (đang bật) hoặc 'false' (đang tắt)",
+  })
+  @IsOptional()
+  @IsString()
+  status?: string;
+
+  @ApiPropertyOptional({ default: 'vi' })
+  @IsOptional()
+  @IsString()
+  lang?: string = 'vi';
 }

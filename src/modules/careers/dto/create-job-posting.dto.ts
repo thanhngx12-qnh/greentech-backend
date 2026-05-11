@@ -1,4 +1,4 @@
-// src/modules/careers/dto/create-job-posting.dto.ts
+// File: src/modules/careers/dto/create-job-posting.dto.ts
 import {
   IsString,
   IsEnum,
@@ -7,33 +7,135 @@ import {
   IsObject,
   IsNotEmpty,
   IsDateString,
+  Min,
 } from 'class-validator';
 import { JobType, JobStatus } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateJobPostingDto {
-  @IsInt() @IsNotEmpty() category_id: number;
+  @ApiProperty({ example: 1, description: 'ID danh mục tuyển dụng' })
+  @IsInt()
+  @IsNotEmpty()
+  category_id: number;
 
-  @IsString() @IsNotEmpty() slug_vi: string;
-  @IsOptional() @IsString() slug_en?: string;
-  @IsOptional() @IsString() slug_zh?: string;
+  // --- SLUG (Dạng phẳng) ---
+  @ApiProperty({
+    example: 'tuyen-ky-su-hoa-hoc',
+    description: 'Đường dẫn SEO (vi)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  slug_vi: string;
 
-  @IsString() @IsNotEmpty() title_vi: string;
-  @IsOptional() @IsString() title_en?: string;
-  @IsOptional() @IsString() title_zh?: string;
+  @ApiPropertyOptional({
+    example: 'chemical-engineer-hiring',
+    description: 'Đường dẫn SEO (en)',
+  })
+  @IsOptional()
+  @IsString()
+  slug_en?: string;
 
-  @IsString() @IsNotEmpty() description_vi: string;
-  @IsOptional() @IsString() description_en?: string;
-  @IsOptional() @IsString() description_zh?: string;
+  @ApiPropertyOptional({ description: 'Đường dẫn SEO (zh)' })
+  @IsOptional()
+  @IsString()
+  slug_zh?: string;
 
-  @IsOptional() @IsObject() requirements_i18n?: Record<string, string>;
-  @IsOptional() @IsObject() benefits_i18n?: Record<string, string>;
+  // --- TITLE (Dạng phẳng) ---
+  @ApiProperty({
+    example: 'Kỹ sư Phân tích Hóa học',
+    description: 'Tên vị trí (vi)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  title_vi: string;
 
-  @IsOptional() @IsString() location?: string;
-  @IsOptional() @IsString() salary_range?: string;
+  @ApiPropertyOptional({ example: 'Chemical Analysis Engineer' })
+  @IsOptional()
+  @IsString()
+  title_en?: string;
 
-  @IsOptional() @IsEnum(JobType) type?: JobType;
-  @IsOptional() @IsEnum(JobStatus) status?: JobStatus;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  title_zh?: string;
 
-  @IsOptional() @IsDateString() deadline?: string;
-  @IsOptional() @IsObject() seo_i18n?: Record<string, any>;
+  // --- DESCRIPTION (Nội dung chi tiết) ---
+  @ApiProperty({
+    example: '<p>Mô tả công việc bằng HTML...</p>',
+    description: 'Mô tả (vi)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  description_vi: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description_en?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description_zh?: string;
+
+  // --- 🎯 FIX LỖI TẠI ĐÂY: Thêm additionalProperties cho Object ---
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Yêu cầu công việc đa ngôn ngữ',
+    example: { vi: 'Bằng đại học', en: 'Degree' },
+  })
+  @IsOptional()
+  @IsObject()
+  requirements_i18n?: Record<string, string>;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Quyền lợi đa ngôn ngữ',
+  })
+  @IsOptional()
+  @IsObject()
+  benefits_i18n?: Record<string, string>;
+
+  // --- ADDITIONAL FIELDS ---
+  @ApiPropertyOptional({ example: 'Hà Nội', description: 'Địa điểm làm việc' })
+  @IsOptional()
+  @IsString()
+  location?: string;
+
+  @ApiPropertyOptional({
+    example: '15 - 20 Triệu VNĐ',
+    description: 'Khoảng lương',
+  })
+  @IsOptional()
+  @IsString()
+  salary_range?: string;
+
+  @ApiPropertyOptional({ enum: JobType, default: JobType.FULL_TIME })
+  @IsOptional()
+  @IsEnum(JobType)
+  type?: JobType;
+
+  @ApiPropertyOptional({ enum: JobStatus, default: JobStatus.DRAFT })
+  @IsOptional()
+  @IsEnum(JobStatus)
+  status?: JobStatus;
+
+  @ApiPropertyOptional({
+    example: '2026-12-31',
+    description: 'Hạn chót nộp hồ sơ (ISO)',
+  })
+  @IsOptional()
+  @IsDateString()
+  deadline?: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description: 'Cấu hình SEO chi tiết (SeoDetailDto)',
+  })
+  @IsOptional()
+  @IsObject()
+  seo_i18n?: Record<string, any>;
 }

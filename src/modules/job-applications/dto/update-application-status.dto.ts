@@ -1,10 +1,14 @@
 // File: src/modules/job-applications/dto/update-application-status.dto.ts
 import { IsString, IsNotEmpty, IsIn } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
-// Theo Schema của bạn, status là String thay vì Enum, nên ta dùng IsIn để bảo vệ
 const ALLOWED_STATUSES = ['NEW', 'REVIEWING', 'INTERVIEW', 'REJECTED', 'HIRED'];
 
 export class UpdateApplicationStatusDto {
+  @ApiProperty({
+    enum: ALLOWED_STATUSES,
+    description: 'Trạng thái mới của hồ sơ ứng viên',
+  })
   @IsString()
   @IsNotEmpty()
   @IsIn(ALLOWED_STATUSES, {

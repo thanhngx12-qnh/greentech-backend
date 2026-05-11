@@ -9,37 +9,101 @@ import {
   MinLength,
 } from 'class-validator';
 import { NewsStatus } from '@prisma/client';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'; // <-- Thêm
+import { SeoDetailDto } from './seo-detail.dto';
 
 export class CreateNewsDto {
+  @ApiProperty({ example: 1, description: 'ID của danh mục tin tức' })
   @IsInt()
   category_id: number;
 
-  // --- SLUG (Bắt buộc phải có để làm URL, nhưng Frontend có thể tự sinh từ Title) ---
-  @IsString() @IsNotEmpty() slug_vi: string;
-  @IsOptional() @IsString() slug_en?: string;
-  @IsOptional() @IsString() slug_zh?: string;
+  // --- SLUG (Dạng phẳng) ---
+  @ApiProperty({
+    example: 'tin-tuc-greentech-2026',
+    description: 'Slug đường dẫn (vi)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  slug_vi: string;
 
-  // --- TITLE (Bắt buộc phải có để làm tiêu đề bài viết & SEO) ---
+  @ApiPropertyOptional({
+    example: 'greentech-news-2026',
+    description: 'Slug đường dẫn (en)',
+  })
+  @IsOptional()
+  @IsString()
+  slug_en?: string;
+
+  @ApiPropertyOptional({ description: 'Slug đường dẫn (zh)' })
+  @IsOptional()
+  @IsString()
+  slug_zh?: string;
+
+  // --- TITLE (Dạng phẳng) ---
+  @ApiProperty({
+    example: 'Tin tức Greentech mới nhất',
+    description: 'Tiêu đề bài viết (vi)',
+  })
   @IsString()
   @IsNotEmpty()
   @MinLength(5, { message: 'Tiêu đề quá ngắn, vui lòng nhập ít nhất 5 ký tự' })
   title_vi: string;
-  @IsOptional() @IsString() title_en?: string;
-  @IsOptional() @IsString() title_zh?: string;
 
-  // --- CONTENT (Bắt buộc phải có để có nội dung cho người dùng đọc) ---
-  @IsString() @IsNotEmpty() content_vi: string;
-  @IsOptional() @IsString() content_en?: string;
-  @IsOptional() @IsString() content_zh?: string;
+  @ApiPropertyOptional({
+    example: 'Latest Greentech News',
+    description: 'Tiêu đề bài viết (en)',
+  })
+  @IsOptional()
+  @IsString()
+  title_en?: string;
 
-  @IsOptional() @IsString() featured_image?: string;
+  @ApiPropertyOptional({ description: 'Tiêu đề bài viết (zh)' })
+  @IsOptional()
+  @IsString()
+  title_zh?: string;
 
+  // --- CONTENT (Dạng phẳng) ---
+  @ApiProperty({
+    example: '<p>Nội dung soạn thảo bằng TinyMCE...</p>',
+    description: 'Nội dung chi tiết (vi)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  content_vi: string;
+
+  @ApiPropertyOptional({ description: 'Nội dung chi tiết (en)' })
+  @IsOptional()
+  @IsString()
+  content_en?: string;
+
+  @ApiPropertyOptional({ description: 'Nội dung chi tiết (zh)' })
+  @IsOptional()
+  @IsString()
+  content_zh?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://cloudinary.com/.../cover.webp',
+    description: 'Ảnh đại diện chính của bài viết',
+  })
+  @IsOptional()
+  @IsString()
+  featured_image?: string;
+
+  @ApiPropertyOptional({
+    enum: NewsStatus,
+    example: NewsStatus.DRAFT,
+    description: 'Trạng thái bài viết',
+  })
   @IsOptional()
   @IsEnum(NewsStatus)
   status?: NewsStatus;
 
-  // --- SEO SUITE (Có thể để trống, nhưng nếu có thì sẽ cực tốt cho SEO) ---
+  @ApiPropertyOptional({
+    type: 'object',
+    description: 'Bộ cấu hình SEO cho các ngôn ngữ (Sử dụng SeoDetailDto)',
+    additionalProperties: { $ref: '#/components/schemas/SeoDetailDto' },
+  })
   @IsOptional()
   @IsObject()
-  seo_i18n?: Record<string, any>;
+  seo_i18n?: Record<string, SeoDetailDto>;
 }
