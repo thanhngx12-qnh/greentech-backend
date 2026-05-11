@@ -21,6 +21,7 @@ import { HealthModule } from './modules/health/health.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { StandardsModule } from './modules/standards/standards.module';
+import { GlobalSettingsModule } from './modules/global-settings/global-settings.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { StandardsModule } from './modules/standards/standards.module';
     SlidersModule,
     HealthModule,
     StandardsModule,
+    GlobalSettingsModule,
     ThrottlerModule.forRoot([
       {
         name: 'default',

@@ -377,3 +377,23 @@ model Standard {
 
   @@map("standards")
 }
+
+// ==========================================
+// 9. MODULE CÀI ĐẶT CHUNG (GLOBAL SETTINGS)
+// ==========================================
+
+model GlobalSetting {
+  // `key` sẽ là khóa chính luôn để đảm bảo không bị trùng
+  key        String  @id
+  
+  // `value` lưu dưới dạng JSONB để có thể chứa cả text thường, object đa ngôn ngữ, hoặc mảng
+  // Ví dụ: 
+  // - key="hotline", value={"value": "0987654321"}
+  // - key="company_name", value={"vi": "Tên Cty", "en": "Company Name"}
+  value      Json
+  
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("global_settings")
+}

@@ -23,7 +23,8 @@ export class AuditLogsService {
       | 'SLIDERS'
       | 'STANDARDS'
       | 'USERS'
-      | 'SEARCH_LOGS',
+      | 'SEARCH_LOGS'
+      | 'SETTINGS',
     recordId: string,
     oldData?: any,
     newData?: any,
