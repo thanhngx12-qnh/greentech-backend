@@ -11,12 +11,15 @@ import { UpdateJobPostingDto } from './dto/update-job-posting.dto';
 import { GetJobPostingsQueryDto } from './dto/get-job-postings-query.dto';
 import { Prisma } from '@prisma/client';
 import { AuditLogsService } from '../audit-logs/audit-logs.service'; // <-- IMPORT AUDIT LOG
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class JobPostingsService {
   constructor(
     private prisma: PrismaService,
     private auditLogsService: AuditLogsService, // <-- INJECT AUDIT LOG
+    @InjectQueue('indexing-queue') private indexingQueue: Queue,
   ) {}
 
   // ========================================================
@@ -27,7 +30,6 @@ export class JobPostingsService {
     const category = await this.prisma.category.findUnique({
       where: { id: dto.category_id },
     });
-    // Đảm bảo tin tuyển dụng phải nằm trong danh mục JOB
     if (!category || category.type !== 'JOB') {
       throw new BadRequestException({
         errorCode: 'INVALID_CATEGORY',
@@ -58,7 +60,29 @@ export class JobPostingsService {
 
       const newJob = await this.prisma.job.create({ data });
 
-      // 🎯 BẮN LOG: Hành động TẠO MỚI
+      // 🎯 LOGIC MỚI: Đẩy vào Queue nếu tin tuyển dụng được mở
+      if (dto.is_index_request && newJob.status === 'OPEN') {
+        const slugs = newJob.slug_i18n as any;
+        const baseUrl =
+          process.env.FRONTEND_BASE_URL || 'http://localhost:3001';
+        const urls_to_index = Object.keys(slugs)
+          .map((lang) =>
+            slugs[lang] ? `${baseUrl}/${lang}/careers/${slugs[lang]}` : null,
+          )
+          .filter(Boolean);
+
+        if (urls_to_index.length > 0) {
+          await this.indexingQueue.add('request-indexing', {
+            urls: urls_to_index,
+          });
+          console.log(
+            '[INDEXING QUEUE] Đã thêm Job index cho Tin tuyển dụng mới:',
+            newJob.id,
+          );
+        }
+      }
+
+      // Ghi Audit Log
       this.auditLogsService.logChange(
         currentUserId,
         'CREATE',
@@ -71,10 +95,7 @@ export class JobPostingsService {
       return newJob;
     } catch (error) {
       console.error('Job Create Error:', error);
-      throw new InternalServerErrorException({
-        errorCode: 'CREATE_FAILED',
-        message: 'Không thể tạo tin tuyển dụng',
-      });
+      throw new InternalServerErrorException('Không thể tạo tin tuyển dụng');
     }
   }
 
@@ -148,7 +169,6 @@ export class JobPostingsService {
   }
 
   async update(id: string, dto: UpdateJobPostingDto, currentUserId: string) {
-    // <-- THÊM currentUserId
     const existing = await this.findOne(id);
     const updateData: Prisma.JobUpdateInput = {};
 
@@ -168,7 +188,6 @@ export class JobPostingsService {
         zh: dto.slug_zh ?? (existing.slug_i18n as any).zh,
       } as any;
     }
-
     if (dto.title_vi || dto.title_en || dto.title_zh) {
       updateData.title_i18n = {
         vi: dto.title_vi ?? (existing.title_i18n as any).vi,
@@ -176,7 +195,6 @@ export class JobPostingsService {
         zh: dto.title_zh ?? (existing.title_i18n as any).zh,
       } as any;
     }
-
     if (dto.description_vi || dto.description_en || dto.description_zh) {
       updateData.description_i18n = {
         vi: dto.description_vi ?? (existing.description_i18n as any).vi,
@@ -196,7 +214,29 @@ export class JobPostingsService {
         data: updateData,
       });
 
-      // 🎯 BẮN LOG: Hành động CẬP NHẬT
+      // 🎯 LOGIC MỚI: Đẩy vào Queue nếu tin tuyển dụng được cập nhật sang trạng thái MỞ
+      if (dto.is_index_request && updatedJob.status === 'OPEN') {
+        const slugs = updatedJob.slug_i18n as any;
+        const baseUrl =
+          process.env.FRONTEND_BASE_URL || 'http://localhost:3001';
+        const urls_to_index = Object.keys(slugs)
+          .map((lang) =>
+            slugs[lang] ? `${baseUrl}/${lang}/careers/${slugs[lang]}` : null,
+          )
+          .filter(Boolean);
+
+        if (urls_to_index.length > 0) {
+          await this.indexingQueue.add('request-indexing', {
+            urls: urls_to_index,
+          });
+          console.log(
+            '[INDEXING QUEUE] Đã thêm Job index cho Tin tuyển dụng vừa cập nhật:',
+            updatedJob.id,
+          );
+        }
+      }
+
+      // Ghi Audit Log
       this.auditLogsService.logChange(
         currentUserId,
         'UPDATE',
@@ -208,10 +248,7 @@ export class JobPostingsService {
 
       return updatedJob;
     } catch (e) {
-      throw new InternalServerErrorException({
-        errorCode: 'UPDATE_FAILED',
-        message: 'Cập nhật thất bại',
-      });
+      throw new InternalServerErrorException('Cập nhật thất bại');
     }
   }
 

@@ -7,7 +7,7 @@ import {
   IsObject,
   IsNotEmpty,
   IsDateString,
-  Min,
+  IsBoolean,
 } from 'class-validator';
 import { JobType, JobStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -138,4 +138,13 @@ export class CreateJobPostingDto {
   @IsOptional()
   @IsObject()
   seo_i18n?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description:
+      'Bật/Tắt việc gửi yêu cầu Index lên Google khi dịch vụ được PUBLISHED',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_index_request?: boolean = true;
 }

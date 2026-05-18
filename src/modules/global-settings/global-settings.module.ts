@@ -9,5 +9,6 @@ import { PrismaModule } from '../../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [GlobalSettingsController, GlobalSettingsPublicController],
   providers: [GlobalSettingsService],
+  exports: [GlobalSettingsService], // <-- THÊM VÀO ĐÂY
 })
 export class GlobalSettingsModule {}

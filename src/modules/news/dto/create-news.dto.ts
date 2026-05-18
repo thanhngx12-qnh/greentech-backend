@@ -7,6 +7,7 @@ import {
   IsObject,
   IsNotEmpty,
   MinLength,
+  IsBoolean,
 } from 'class-validator';
 import { NewsStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'; // <-- Thêm
@@ -106,4 +107,13 @@ export class CreateNewsDto {
   @IsOptional()
   @IsObject()
   seo_i18n?: Record<string, SeoDetailDto>;
+
+  @ApiPropertyOptional({
+    description:
+      'Bật/Tắt việc gửi yêu cầu Index lên Google khi bài viết được PUBLISHED',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_index_request?: boolean = true;
 }

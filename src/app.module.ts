@@ -22,49 +22,60 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { StandardsModule } from './modules/standards/standards.module';
 import { GlobalSettingsModule } from './modules/global-settings/global-settings.module';
+import { IndexingModule } from './modules/indexing/indexing.module';
+import { GoogleModule } from './modules/google/google.module';
 
 @Module({
   imports: [
+    // 1. Core Modules & Config (Nền tảng nhất)
     PrismaModule,
-    UsersModule,
-    AuthModule,
-    CategoriesModule,
-    MediaModule,
-    NewsModule,
-    ServicesModule,
-    LeadsModule,
-    CareersModule,
-    JobApplicationsModule,
-    SearchModule,
-    AuditLogsModule,
-    SlidersModule,
-    HealthModule,
-    StandardsModule,
-    GlobalSettingsModule,
     ThrottlerModule.forRoot([
       {
         name: 'default',
-        ttl: 60000, // Thời gian (miliseconds) - ở đây là 1 phút
-        limit: 20, // Số lần gọi tối đa trong 1 phút cho các API thông thường
+        ttl: 60000,
+        limit: 1000,
       },
       {
         name: 'strict',
         ttl: 60000,
-        limit: 3, // Chỉ cho phép 3 lần/phút cho các API nhạy cảm (Form)
+        limit: 100,
       },
     ]),
     BullModule.forRoot({
       connection: {
-        host: 'localhost',
-        port: 6379,
-        maxRetriesPerRequest: null,
+        host: process.env.REDIS_HOST || 'localhost',
+        port: Number(process.env.REDIS_PORT) || 6379,
       },
     }),
+
+    // 2. Foundational Business Modules (Các module nền tảng, ít phụ thuộc)
+    GlobalSettingsModule, // 🎯 PHẢI ĐƯỢC IMPORT TRƯỚC
+    AuditLogsModule,
+    UsersModule,
+    AuthModule,
+    MediaModule,
+
+    // 3. Dependent Modules (Các module phụ thuộc vào các module trên)
+    GoogleModule, // 🎯 Nằm sau GlobalSettings
+    IndexingModule, // 🎯 Nằm sau Google
+
+    // 4. Content Modules (Các module nội dung chính)
+    CategoriesModule,
+    NewsModule,
+    ServicesModule,
+    CareersModule,
+    JobApplicationsModule,
+    StandardsModule,
+    SlidersModule,
+
+    // 5. Final Modules (Các module chức năng cuối)
+    LeadsModule,
+    SearchModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    // 🎯 Kích hoạt bảo vệ toàn hệ thống bằng ThrottlerGuard
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

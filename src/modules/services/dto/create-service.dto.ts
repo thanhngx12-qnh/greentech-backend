@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   IsNumber,
   Min,
+  IsBoolean,
 } from 'class-validator';
 import { ServiceStatus } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -96,4 +97,13 @@ export class CreateServiceDto {
   @IsOptional()
   @IsObject()
   seo_i18n?: Record<string, any>;
+
+  @ApiPropertyOptional({
+    description:
+      'Bật/Tắt việc gửi yêu cầu Index lên Google khi dịch vụ được PUBLISHED',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_index_request?: boolean = true;
 }

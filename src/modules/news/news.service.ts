@@ -6,16 +6,19 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateNewsDto } from './dto/create-news.dto';
-import { UpdateNewsDto } from './dto/update-news.dto';
-import { Prisma } from '@prisma/client';
-import { AuditLogsService } from '../audit-logs/audit-logs.service'; // <-- IMPORT AUDIT LOGS
+import { CreateNewsDto } from './dto/create-news.dto'; // <-- SỬA LỖI TẠI ĐÂY
+import { UpdateNewsDto } from './dto/update-news.dto'; // <-- SỬA LỖI TẠI ĐÂY
+import { Prisma, NewsStatus } from '@prisma/client';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class NewsService {
   constructor(
     private prisma: PrismaService,
     private auditLogsService: AuditLogsService, // <-- INJECT
+    @InjectQueue('indexing-queue') private indexingQueue: Queue,
   ) {}
 
   // ========================================================
@@ -23,7 +26,6 @@ export class NewsService {
   // ========================================================
 
   async create(dto: CreateNewsDto, currentUserId: string) {
-    // <-- THÊM currentUserId
     const category = await this.prisma.category.findUnique({
       where: { id: dto.category_id },
     });
@@ -37,7 +39,7 @@ export class NewsService {
     try {
       const newsData: Prisma.NewsCreateInput = {
         category: { connect: { id: dto.category_id } },
-        author: { connect: { id: currentUserId } }, // <-- LƯU AUTHOR TỰ ĐỘNG
+        author: { connect: { id: currentUserId } },
         status: dto.status || 'DRAFT',
         featured_image: dto.featured_image,
         slug_i18n: { vi: dto.slug_vi, en: dto.slug_en, zh: dto.slug_zh },
@@ -52,7 +54,27 @@ export class NewsService {
 
       const newNews = await this.prisma.news.create({ data: newsData });
 
-      // 🎯 BẮN LOG
+      if (dto.is_index_request && newNews.status === NewsStatus.PUBLISHED) {
+        const slugs = newNews.slug_i18n as any;
+        const baseUrl =
+          process.env.FRONTEND_BASE_URL || 'http://localhost:3001';
+        const urls_to_index = Object.keys(slugs)
+          .map((lang) =>
+            slugs[lang] ? `${baseUrl}/${lang}/news/${slugs[lang]}` : null,
+          )
+          .filter(Boolean);
+
+        if (urls_to_index.length > 0) {
+          await this.indexingQueue.add('request-indexing', {
+            urls: urls_to_index,
+          });
+          console.log(
+            '[INDEXING QUEUE] Đã thêm Job index cho bài viết mới:',
+            newNews.id,
+          );
+        }
+      }
+
       this.auditLogsService.logChange(
         currentUserId,
         'CREATE',
@@ -61,14 +83,10 @@ export class NewsService {
         null,
         newsData,
       );
-
       return newNews;
     } catch (error) {
       console.error('News Create Error:', error);
-      throw new InternalServerErrorException({
-        errorCode: 'CREATE_FAILED',
-        message: 'Không thể tạo bài viết',
-      });
+      throw new InternalServerErrorException('Không thể tạo bài viết');
     }
   }
 
@@ -135,8 +153,8 @@ export class NewsService {
   }
 
   async update(id: string, dto: UpdateNewsDto, currentUserId: string) {
-    // <-- THÊM currentUserId
     const existing = await this.findOne(id);
+    // 🎯 SỬA: Dùng đúng Prisma.NewsUpdateInput
     const updateData: Prisma.NewsUpdateInput = {};
 
     if (dto.status) updateData.status = dto.status;
@@ -172,12 +190,32 @@ export class NewsService {
       updateData.seo_i18n = dto.seo_i18n as any;
     }
 
+    // 🎯 SỬA: Dùng đúng this.prisma.news.update
     const updatedNews = await this.prisma.news.update({
       where: { id },
       data: updateData as any,
     });
 
-    // 🎯 BẮN LOG
+    if (dto.is_index_request && updatedNews.status === NewsStatus.PUBLISHED) {
+      const slugs = updatedNews.slug_i18n as any;
+      const baseUrl = process.env.FRONTEND_BASE_URL || 'http://localhost:3001';
+      const urls_to_index = Object.keys(slugs)
+        .map((lang) =>
+          slugs[lang] ? `${baseUrl}/${lang}/news/${slugs[lang]}` : null,
+        )
+        .filter(Boolean);
+
+      if (urls_to_index.length > 0) {
+        await this.indexingQueue.add('request-indexing', {
+          urls: urls_to_index,
+        });
+        console.log(
+          '[INDEXING QUEUE] Đã thêm Job index cho bài viết vừa cập nhật:',
+          updatedNews.id,
+        );
+      }
+    }
+
     this.auditLogsService.logChange(
       currentUserId,
       'UPDATE',
@@ -186,7 +224,6 @@ export class NewsService {
       existing,
       updateData,
     );
-
     return updatedNews;
   }
 
