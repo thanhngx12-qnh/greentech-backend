@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSettingDto } from './dto/update-setting.dto';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { Prisma } from '@prisma/client';
+import { BulkUpdateSettingsDto } from './dto/bulk-update-settings.dto';
 
 @Injectable()
 export class GlobalSettingsService {
@@ -104,5 +105,47 @@ export class GlobalSettingsService {
     );
 
     return result;
+  }
+
+  async bulkUpdate(dto: BulkUpdateSettingsDto, currentUserId: string) {
+    const { settings } = dto;
+
+    try {
+      // Bắt đầu một giao dịch (Transaction)
+      await this.prisma.$transaction(async (tx) => {
+        // Lặp qua từng cài đặt mà Frontend gửi lên
+        for (const setting of settings) {
+          const { key, value } = setting;
+
+          const existing = await tx.globalSetting.findUnique({
+            where: { key },
+          });
+
+          // Dùng upsert để vừa Thêm vừa Sửa
+          const updated = await tx.globalSetting.upsert({
+            where: { key },
+            update: { value: value as Prisma.InputJsonValue },
+            create: { key, value: value as Prisma.InputJsonValue },
+          });
+
+          // Ghi log cho từng thay đổi
+          this.auditLogsService.logChange(
+            currentUserId,
+            existing ? 'UPDATE' : 'CREATE',
+            'SETTINGS',
+            key,
+            existing?.value,
+            value,
+          );
+        }
+      });
+
+      return { message: 'Cập nhật cài đặt hệ thống thành công' };
+    } catch (error) {
+      console.error('Bulk Update Settings Error:', error);
+      throw new InternalServerErrorException(
+        'Lỗi khi cập nhật hàng loạt cài đặt',
+      );
+    }
   }
 }
