@@ -24,6 +24,7 @@ import { StandardsModule } from './modules/standards/standards.module';
 import { GlobalSettingsModule } from './modules/global-settings/global-settings.module';
 import { IndexingModule } from './modules/indexing/indexing.module';
 import { GoogleModule } from './modules/google/google.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { GoogleModule } from './modules/google/google.module';
     GlobalSettingsModule, // 🎯 PHẢI ĐƯỢC IMPORT TRƯỚC
     AuditLogsModule,
     UsersModule,
+    DashboardModule,
     AuthModule,
     MediaModule,
 

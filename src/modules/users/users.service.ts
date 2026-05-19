@@ -182,4 +182,92 @@ export class UsersService {
   async findByEmail(email: string) {
     return this.prisma.user.findFirst({ where: { email, deleted_at: null } });
   }
+
+  // ========================================================
+  // --- PROFILE METHODS (Dành cho người dùng tự quản lý) ---
+  // ========================================================
+
+  /**
+   * Lấy thông tin hồ sơ của người dùng đang đăng nhập
+   */
+  async getProfile(userId: string) {
+    // Hàm findOne đã có sẵn select để loại bỏ password
+    return this.findOne(userId);
+  }
+
+  /**
+   * Cập nhật thông tin cá nhân (chỉ cho phép đổi họ tên)
+   */
+  async updateProfile(userId: string, dto: { full_name: string }) {
+    const existing = await this.findOne(userId);
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { full_name: dto.full_name },
+    });
+
+    // Ghi log
+    this.auditLogsService.logChange(
+      userId,
+      'UPDATE',
+      'USERS', // Vẫn là module USERS
+      userId,
+      { full_name: existing.full_name },
+      { full_name: dto.full_name },
+    );
+
+    // Trả về dữ liệu đã loại bỏ password
+    const { password, ...result } = updated;
+    return result;
+  }
+
+  /**
+   * Đổi mật khẩu
+   */
+  async changePassword(
+    userId: string,
+    dto: { old_password; new_password; confirm_password },
+  ) {
+    // 1. Lấy thông tin user đầy đủ (bao gồm cả password đã hash)
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy người dùng');
+    }
+
+    // 2. Xác thực mật khẩu cũ
+    const isMatch = await bcrypt.compare(dto.old_password, user.password);
+    if (!isMatch) {
+      throw new BadRequestException({
+        errorCode: 'OLD_PASSWORD_MISMATCH',
+        message: 'Mật khẩu cũ không chính xác.',
+      });
+    }
+
+    // 3. Kiểm tra mật khẩu mới và xác nhận mật khẩu có khớp không
+    if (dto.new_password !== dto.confirm_password) {
+      throw new BadRequestException({
+        errorCode: 'NEW_PASSWORD_MISMATCH',
+        message: 'Mật khẩu mới và xác nhận mật khẩu không khớp.',
+      });
+    }
+
+    // 4. Hash mật khẩu mới và cập nhật vào DB
+    const hashedNewPassword = await bcrypt.hash(dto.new_password, 10);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedNewPassword },
+    });
+
+    // 5. Ghi log hành động đổi mật khẩu (không lưu password vào log)
+    this.auditLogsService.logChange(
+      userId,
+      'UPDATE',
+      'USERS',
+      userId,
+      { action: 'PASSWORD_CHANGE' },
+      null,
+    );
+
+    return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại.' };
+  }
 }
